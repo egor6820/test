@@ -26,9 +26,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle // НОВИЙ ІМПОРТ
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.tossday.ui.main.MainViewModel
 import com.example.tossday.ui.theme.AppTheme
 import kotlinx.coroutines.delay
@@ -37,10 +38,9 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    viewModel: MainViewModel,
+    viewModel: MainViewModel, // Використовує спільну ViewModel з AppNavGraph
     onBack: () -> Unit
 ) {
-    // ОПТИМІЗАЦІЯ БАТАРЕЇ: Безпечний збір стану
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -71,30 +71,28 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Налаштування", style = MaterialTheme.typography.titleLarge) },
+                title = { Text("Налаштування", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.surface),
+                .padding(padding),
             contentPadding = PaddingValues(bottom = 40.dp, top = 8.dp)
         ) {
             item {
                 SettingsGroup(title = "Вигляд та поведінка") {
-                    // ОПТИМІЗАЦІЯ БАТАРЕЇ: Безпечний збір теми
                     val currentTheme by settingsViewModel.appTheme.collectAsStateWithLifecycle()
 
                     ThemePickerItem(
@@ -119,15 +117,18 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    val isEdit = uiState.isEditMode
+                    // ВИПРАВЛЕНО: Тепер режим редагування працює через Switch і не закриває екран
                     SettingsItem(
                         icon = Icons.Default.Edit,
-                        title = if (isEdit) "Вимкнути режим редагування" else "Режим редагування",
+                        title = "Режим редагування",
                         subtitle = "Видалення задач кнопкою замість свайпу",
-                        onClick = {
-                            viewModel.setEditMode(!isEdit)
-                            if (!isEdit) onBack()
-                        }
+                        trailing = {
+                            Switch(
+                                checked = uiState.isEditMode,
+                                onCheckedChange = { viewModel.setEditMode(it) }
+                            )
+                        },
+                        onClick = { viewModel.setEditMode(!uiState.isEditMode) }
                     )
                 }
             }
@@ -194,7 +195,7 @@ fun SettingsScreen(
     }
 }
 
-// ── Преміальні компоненти (Групи та Елементи) ──
+// ── Допоміжні компоненти ──
 
 @Composable
 private fun SettingsGroup(
@@ -249,6 +250,7 @@ private fun SettingsItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             if (subtitle != null) {
@@ -304,6 +306,7 @@ private fun DestructiveItem(
             Text(
                 text = if (isPending) "Натисніть ще раз для підтвердження" else title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
                 color = contentColor
             )
             if (!isPending && subtitle != null) {
@@ -339,6 +342,7 @@ private fun ThemePickerItem(
         Text(
             text = "Тема оформлення",
             style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(bottom = 16.dp)
         )
