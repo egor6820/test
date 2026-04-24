@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle // НОВИЙ ІМПОРТ
 import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Task
 import com.example.tossday.ui.components.ChipsRow
@@ -29,7 +30,6 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-// Кешуємо форматери дат
 private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale("uk"))
 private val shortDateFormatter = DateTimeFormatter.ofPattern("d MMMM", Locale("uk"))
 
@@ -39,7 +39,9 @@ fun MainScreen(
     onSettingsClick: () -> Unit,
     viewModel: MainViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    // ОПТИМІЗАЦІЯ БАТАРЕЇ: Безпечний збір стану з урахуванням життєвого циклу
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     val snackbarHostState = remember { SnackbarHostState() }
     var editingTimeForTask by remember { mutableStateOf<Task?>(null) }
 
@@ -193,18 +195,21 @@ private fun DaysRowSection(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ОПТИМІЗАЦІЯ: Додано key та contentType для днів
         items(
             items = dayLoads,
-            key = { it.date.toString() },
+            key = { it.date.toEpochDay() },
             contentType = { "dayTile" }
         ) { dayLoad ->
+            val cachedOnClick = remember(dayLoad.date) {
+                { onDaySelected(dayLoad.date) }
+            }
+
             DayTile(
                 dayLoad = dayLoad,
                 isSelected = dayLoad.date == selectedDate,
                 isDragHovered = dayLoad.date == hoveredDate,
                 isHapticEnabled = isHapticEnabled,
-                onClick = { onDaySelected(dayLoad.date) }
+                onClick = cachedOnClick
             )
         }
     }
@@ -226,7 +231,6 @@ private fun TasksListSection(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         if (isEditMode) {
-            // ОПТИМІЗАЦІЯ: Додано key та contentType для заголовка
             item(key = "edit_mode_header", contentType = "header") {
                 Row(
                     modifier = Modifier
@@ -243,9 +247,7 @@ private fun TasksListSection(
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
-                    TextButton(
-                        onClick = onExitEditMode
-                    ) {
+                    TextButton(onClick = onExitEditMode) {
                         Text(
                             text = "Готово",
                             fontWeight = FontWeight.Bold,
@@ -256,7 +258,6 @@ private fun TasksListSection(
             }
         }
 
-        // ОПТИМІЗАЦІЯ: Додано key та contentType для списку завдань
         items(
             items = tasks,
             key = { it.id },

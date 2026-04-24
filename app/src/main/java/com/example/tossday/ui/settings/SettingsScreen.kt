@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle // НОВИЙ ІМПОРТ
 import com.example.tossday.ui.main.MainViewModel
 import com.example.tossday.ui.theme.AppTheme
 import kotlinx.coroutines.delay
@@ -38,7 +40,8 @@ fun SettingsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    // ОПТИМІЗАЦІЯ БАТАРЕЇ: Безпечний збір стану
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -91,7 +94,8 @@ fun SettingsScreen(
         ) {
             item {
                 SettingsGroup(title = "Вигляд та поведінка") {
-                    val currentTheme by settingsViewModel.appTheme.collectAsState()
+                    // ОПТИМІЗАЦІЯ БАТАРЕЇ: Безпечний збір теми
+                    val currentTheme by settingsViewModel.appTheme.collectAsStateWithLifecycle()
 
                     ThemePickerItem(
                         currentTheme = currentTheme,
@@ -181,7 +185,7 @@ fun SettingsScreen(
                     SettingsItem(
                         icon = Icons.Outlined.Info,
                         title = "TossDay",
-                        subtitle = "Версія 1.0.0 • Планувальник дня",
+                        subtitle = "Версія 1.0.0 • Планувальник завдань",
                         onClick = null
                     )
                 }
@@ -190,7 +194,7 @@ fun SettingsScreen(
     }
 }
 
-// ── Преміальні компоненти (Групи та Елементи) ────────────────────────────────
+// ── Преміальні компоненти (Групи та Елементи) ──
 
 @Composable
 private fun SettingsGroup(
@@ -270,7 +274,6 @@ private fun DestructiveItem(
     isPending: Boolean,
     onClick: () -> Unit
 ) {
-    // Плавна зміна кольору за допомогою spring для приємного відгуку
     val contentColor by animateColorAsState(
         targetValue = if (isPending) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.error,
         animationSpec = spring(stiffness = Spring.StiffnessLow),
@@ -314,8 +317,6 @@ private fun DestructiveItem(
     }
 }
 
-// ── Theme Picker ──────────────────────────────────────────────────────────────
-
 private data class ThemeOption(val theme: AppTheme, val color: Color, val label: String)
 
 @Composable
@@ -349,7 +350,6 @@ private fun ThemePickerItem(
             options.forEach { option ->
                 val isSelected = currentTheme == option.theme
 
-                // Spring-анімація масштабування для тактильного ефекту натискання
                 val scale by animateFloatAsState(
                     targetValue = if (isSelected) 1.15f else 1f,
                     animationSpec = spring(
@@ -363,8 +363,8 @@ private fun ThemePickerItem(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null // Прибираємо стандартний ripple для кастомної анімації
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
                         ) { onThemeSelected(option.theme) }
                 ) {
                     Box(
