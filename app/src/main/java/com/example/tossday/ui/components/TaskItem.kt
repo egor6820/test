@@ -240,7 +240,7 @@ fun TaskItem(
                                 change.consume()
                                 scope.launch {
                                     val wasPastThreshold = abs(offsetX.value) > thresholdPx
-                                    
+
                                     val goingRight = (offsetX.value + dragAmount) > 0
                                     val resistance = when {
                                         goingRight && isDone -> 0.12f
@@ -251,7 +251,7 @@ fun TaskItem(
                                     }
                                     val newOffset = offsetX.value + dragAmount * resistance
                                     offsetX.snapTo(newOffset)
-                                    
+
                                     val isPastThreshold = abs(newOffset) > thresholdPx
                                     if (isPastThreshold && !wasPastThreshold && isHapticEnabled) {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)

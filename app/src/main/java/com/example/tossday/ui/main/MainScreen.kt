@@ -1,48 +1,24 @@
 package com.example.tossday.ui.main
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.background
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Task
 import com.example.tossday.ui.components.ChipsRow
 import com.example.tossday.ui.components.DayTile
@@ -53,7 +29,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-// Pre-created formatters — avoid re-allocation on every call
+// Кешуємо форматери дат
 private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale("uk"))
 private val shortDateFormatter = DateTimeFormatter.ofPattern("d MMMM", Locale("uk"))
 
@@ -65,16 +41,8 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val rowState = rememberLazyListState()
     var editingTimeForTask by remember { mutableStateOf<Task?>(null) }
 
-    // Scroll to today (index 7 in the -7..+30 window) on first load
-    LaunchedEffect(Unit) {
-        rowState.scrollToItem(7)
-    }
-
-    // Snackbar: reset flag immediately, then show.
-    // Undo is handled via SnackbarResult instead of a custom button.
     LaunchedEffect(uiState.showUndoSnackbar) {
         if (uiState.showUndoSnackbar) {
             val message = when (uiState.lastAction) {
@@ -82,7 +50,6 @@ fun MainScreen(
                 is UndoableAction.TaskDeleted -> "Видалено"
                 else -> "Готово"
             }
-            // Reset flag first so it doesn't get stuck
             viewModel.onDismissUndo()
             val result = snackbarHostState.showSnackbar(
                 message = message,
@@ -96,7 +63,8 @@ fun MainScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -104,112 +72,51 @@ fun MainScreen(
                 .padding(innerPadding)
                 .imePadding()
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                // Quick capture — capped at 250dp so it doesn't push everything off screen
-                QuickCaptureField(
-                    text = uiState.quickNoteText,
-                    onTextChange = viewModel::onQuickNoteChanged,
-                    isHapticEnabled = uiState.isHapticEnabled,
-                    modifier = Modifier.heightIn(max = 250.dp)
-                )
+            TopBarSection(
+                quickNoteText = uiState.quickNoteText,
+                onNoteChanged = viewModel::onQuickNoteChanged,
+                isHapticEnabled = uiState.isHapticEnabled,
+                onSettingsClick = onSettingsClick
+            )
 
-                // Floating settings button
-                IconButton(
-                    onClick = onSettingsClick,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f), CircleShape)
-                        .size(36.dp)
-                ) {
-                    Icon(Icons.Default.Settings, contentDescription = "Налаштування", modifier = Modifier.size(20.dp))
-                }
-            }
-
-            // Chips row — always composed so rapid typing can't bounce it in/out of
-            // the tree and lose per-chip animation state. Empty list = LazyRow with
-            // no items (just contentPadding of ~16dp as breathing room).
             ChipsRow(
                 chips = uiState.chips,
-                onChipTap = { chip ->
-                    viewModel.onChipAssigned(chip, uiState.selectedDate)
-                },
+                onChipTap = { chip -> viewModel.onChipAssigned(chip, uiState.selectedDate) },
                 onChipDragStart = viewModel::onDragStarted,
                 isHapticEnabled = uiState.isHapticEnabled
             )
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 4.dp),
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            DaysRowSection(
+                dayLoads = uiState.dayLoads,
+                selectedDate = uiState.selectedDate,
+                hoveredDate = uiState.dragState.hoveredDate,
+                isHapticEnabled = uiState.isHapticEnabled,
+                onDaySelected = viewModel::onDaySelected
             )
 
-            // Day tiles — always 14 days visible
-            LazyRow(
-                state = rowState,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(uiState.dayLoads, key = { it.date.toString() }) { dayLoad ->
-                    DayTile(
-                        dayLoad = dayLoad,
-                        isSelected = dayLoad.date == uiState.selectedDate,
-                        isDragHovered = dayLoad.date == uiState.dragState.hoveredDate,
-                        isHapticEnabled = uiState.isHapticEnabled,
-                        onClick = { viewModel.onDaySelected(dayLoad.date) }
-                    )
-                }
+            val dateHeaderText = remember(uiState.selectedDate) {
+                formatSelectedDate(uiState.selectedDate)
             }
-
-            // Day header
             Text(
-                text = formatSelectedDate(uiState.selectedDate),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                text = dateHeaderText,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
             )
 
-            // Task list — weight(1f) ensures it fills remaining space and scrolls
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                if (uiState.isEditMode) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Режим редагування",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            androidx.compose.material3.TextButton(
-                                onClick = { viewModel.setEditMode(false) }
-                            ) {
-                                Text(
-                                    "Вийти",
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-                    }
-                }
-                items(uiState.selectedDayTasks, key = { it.id }) { task ->
-                    TaskItem(
-                        task = task,
-                        onDone = viewModel::onTaskDone,
-                        onDelete = viewModel::onTaskDeleted,
-                        onClick = { editingTimeForTask = task },
-                        isHapticEnabled = uiState.isHapticEnabled,
-                        isEditMode = uiState.isEditMode
-                    )
-                }
-            }
+            TasksListSection(
+                modifier = Modifier.weight(1f),
+                tasks = uiState.selectedDayTasks,
+                isEditMode = uiState.isEditMode,
+                isHapticEnabled = uiState.isHapticEnabled,
+                onDone = viewModel::onTaskDone,
+                onDelete = viewModel::onTaskDeleted,
+                onTaskClick = { editingTimeForTask = it },
+                onExitEditMode = { viewModel.setEditMode(false) }
+            )
         }
 
         TimePickerSheet(
@@ -227,6 +134,146 @@ fun MainScreen(
     }
 }
 
+// === ІЗОЛЬОВАНІ КОМПОНЕНТИ ===
+
+@Composable
+private fun TopBarSection(
+    quickNoteText: String,
+    onNoteChanged: (String) -> Unit,
+    isHapticEnabled: Boolean,
+    onSettingsClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        QuickCaptureField(
+            text = quickNoteText,
+            onTextChange = onNoteChanged,
+            isHapticEnabled = isHapticEnabled,
+            modifier = Modifier.heightIn(max = 250.dp)
+        )
+        IconButton(
+            onClick = onSettingsClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                .border(0.5.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f), CircleShape)
+                .size(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Налаштування",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DaysRowSection(
+    dayLoads: List<DayLoad>,
+    selectedDate: LocalDate,
+    hoveredDate: LocalDate?,
+    isHapticEnabled: Boolean,
+    onDaySelected: (LocalDate) -> Unit
+) {
+    val rowState = rememberLazyListState()
+
+    LaunchedEffect(Unit) {
+        rowState.scrollToItem(7)
+    }
+
+    LazyRow(
+        state = rowState,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // ОПТИМІЗАЦІЯ: Додано key та contentType для днів
+        items(
+            items = dayLoads,
+            key = { it.date.toString() },
+            contentType = { "dayTile" }
+        ) { dayLoad ->
+            DayTile(
+                dayLoad = dayLoad,
+                isSelected = dayLoad.date == selectedDate,
+                isDragHovered = dayLoad.date == hoveredDate,
+                isHapticEnabled = isHapticEnabled,
+                onClick = { onDaySelected(dayLoad.date) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TasksListSection(
+    modifier: Modifier = Modifier,
+    tasks: List<Task>,
+    isEditMode: Boolean,
+    isHapticEnabled: Boolean,
+    onDone: (Task) -> Unit,
+    onDelete: (Task) -> Unit,
+    onTaskClick: (Task) -> Unit,
+    onExitEditMode: () -> Unit
+) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        if (isEditMode) {
+            // ОПТИМІЗАЦІЯ: Додано key та contentType для заголовка
+            item(key = "edit_mode_header", contentType = "header") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Режим редагування",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    TextButton(
+                        onClick = onExitEditMode
+                    ) {
+                        Text(
+                            text = "Готово",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+        }
+
+        // ОПТИМІЗАЦІЯ: Додано key та contentType для списку завдань
+        items(
+            items = tasks,
+            key = { it.id },
+            contentType = { "taskItem" }
+        ) { task ->
+            TaskItem(
+                task = task,
+                onDone = onDone,
+                onDelete = onDelete,
+                onClick = { onTaskClick(task) },
+                isHapticEnabled = isHapticEnabled,
+                isEditMode = isEditMode
+            )
+        }
+    }
+}
+
 private fun formatSelectedDate(date: LocalDate): String {
     val today = LocalDate.now()
     return when (date) {
@@ -236,4 +283,3 @@ private fun formatSelectedDate(date: LocalDate): String {
         else -> date.format(dateFormatter).replaceFirstChar { it.uppercase() }
     }
 }
-
