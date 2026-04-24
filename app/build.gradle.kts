@@ -46,6 +46,11 @@ kotlin {
     jvmToolchain(11)
 }
 
+// УВІМКНЕННЯ STRONG SKIPPING MODE
+composeCompiler {
+    enableStrongSkippingMode = true
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

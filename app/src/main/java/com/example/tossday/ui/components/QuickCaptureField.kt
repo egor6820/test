@@ -1,18 +1,37 @@
 package com.example.tossday.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,11 +39,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
@@ -40,27 +62,20 @@ fun QuickCaptureField(
 ) {
     val focusRequester = remember { FocusRequester() }
 
-    // Track whether we've done the initial cursor placement
     var initialCursorSet by remember { mutableStateOf(false) }
     var showCleanupDialog by remember { mutableStateOf(false) }
-    // Survives nav pop/push + activity recreation so keyboard doesn't re-pop after
-    // returning from Settings or a config change.
     var hasAutoFocused by rememberSaveable { mutableStateOf(false) }
 
-    // Internal TextFieldValue to control cursor position
     var textFieldValue by remember { mutableStateOf(TextFieldValue(text)) }
 
-    // Sync external text changes (e.g. initial load from Room)
     LaunchedEffect(text) {
         if (textFieldValue.text != text) {
             if (!initialCursorSet && text.isNotEmpty()) {
-                // First load with content — ensure empty last line and place cursor at end
                 val displayText = if (!text.endsWith("\n")) "$text\n" else text
                 textFieldValue = TextFieldValue(displayText, TextRange(displayText.length))
                 initialCursorSet = true
-                if (displayText != text) onTextChange(displayText) // Save the prepended newline
+                if (displayText != text) onTextChange(displayText)
             } else {
-                // Subsequent external changes — keep current cursor position safely
                 textFieldValue = textFieldValue.copy(text = text)
             }
         }
@@ -68,13 +83,14 @@ fun QuickCaptureField(
 
     LaunchedEffect(Unit) {
         if (!hasAutoFocused) {
-            delay(250) // Let UI render first, then show keyboard
+            delay(250)
             focusRequester.requestFocus()
             hasAutoFocused = true
         }
     }
 
-    Box(modifier = modifier) {
+    // ФІКС: Прибрано animateContentSize, щоб уникнути конфліктів з клавіатурою (IME)
+    Box(modifier = modifier.fillMaxWidth()) {
         TextField(
             value = textFieldValue,
             onValueChange = { newValue ->
@@ -88,9 +104,10 @@ fun QuickCaptureField(
                 .focusRequester(focusRequester),
             placeholder = {
                 Text(
-                    text = "Пиши завдання — кожне з нового рядка\n// такий рядок ігнорується",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    text = "Що плануєш зробити?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
                 )
             },
             textStyle = MaterialTheme.typography.bodyLarge,
@@ -106,30 +123,76 @@ fun QuickCaptureField(
             )
         )
 
-        // Smart cleanup button: appears only when there are excessive newlines
-        val hasExtraNewlines = text.contains("\n\n\n") || text.trim().isEmpty() && text.length > 2
-        
-        androidx.compose.animation.AnimatedVisibility(
-            visible = hasExtraNewlines,
-            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
-            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
+        AnimatedVisibility(
+            visible = text.isEmpty(),
+            enter = fadeIn(tween(500)),
+            exit = fadeOut(tween(200)),
             modifier = Modifier
-                .align(androidx.compose.ui.Alignment.BottomEnd)
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+                Text(
+                    text = "Enter — нове завдання. Рядки з '//' ігноруються",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+            }
+        }
+
+        val hasExtraNewlines = text.contains("\n\n\n") || text.trim().isEmpty() && text.length > 2
+
+        // Логіка: ховаємо кнопку як тільки відкривається діалог (запобігає стрибкам)
+        val isButtonVisible = hasExtraNewlines && !showCleanupDialog
+
+        AnimatedVisibility(
+            visible = isButtonVisible,
+            enter = fadeIn(tween(250)) +
+                    slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        initialOffsetY = { 40 }
+                    ) +
+                    scaleIn(initialScale = 0.8f, animationSpec = tween(200)),
+            exit = fadeOut(tween(150)) +
+                    slideOutVertically(
+                        targetOffsetY = { 20 },
+                        animationSpec = tween(150)
+                    ) +
+                    scaleOut(targetScale = 0.8f, animationSpec = tween(150)),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
                 .padding(8.dp)
         ) {
-            androidx.compose.material3.IconButton(
-                onClick = {
-                    showCleanupDialog = true 
-                },
-                colors = androidx.compose.material3.IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .border(
+                        width = 0.5.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                        shape = CircleShape
+                    )
+                    .clickable { showCleanupDialog = true },
+                contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Icon(
-                    imageVector = Icons.Default.Clear,
-                    contentDescription = "Очистити пусті рядки",
-                    modifier = Modifier.padding(4.dp)
+                Icon(
+                    imageVector = Icons.Default.AutoFixHigh,
+                    contentDescription = "Оптимізувати текст",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -142,7 +205,6 @@ fun QuickCaptureField(
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            // Replace 3+ newlines with exactly 2 newlines (1 empty line)
                             val cleaned = "\n" + text.replace(Regex("\\n{3,}"), "\n\n").trim()
                             textFieldValue = TextFieldValue(cleaned, TextRange(0))
                             onTextChange(cleaned)
