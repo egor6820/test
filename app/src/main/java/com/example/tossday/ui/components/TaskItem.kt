@@ -1,11 +1,16 @@
 package com.example.tossday.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +20,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -32,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -62,12 +70,6 @@ fun TaskItem(
     isEditMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    // Edit mode: simple row with delete button, no swipe
-    if (isEditMode) {
-        EditModeTaskItem(task = task, onDelete = onDelete, modifier = modifier)
-        return
-    }
-
     val haptic = LocalHapticFeedback.current
     val isDone = task.status == Status.DONE
     val scope = rememberCoroutineScope()
@@ -75,53 +77,74 @@ fun TaskItem(
     val density = LocalDensity.current
     val thresholdPx = with(density) { 120.dp.toPx() }
 
-    // Controls the smooth collapse after swipe-off
     var isVisible by remember(task.id) { mutableStateOf(true) }
-    // Pending action to fire after collapse animation finishes
     var pendingAction by remember(task.id) { mutableStateOf<(() -> Unit)?>(null) }
 
-    // Fire the action after collapse animation completes
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (isDone) 0.45f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "contentAlpha"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        else MaterialTheme.colorScheme.onSurface,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "textColor"
+    )
+
+    val timeColor by animateColorAsState(
+        targetValue = if (isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+        else MaterialTheme.colorScheme.primary,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "timeColor"
+    )
+
+    // Плавна зміна фону в режимі редагування
+    val surfaceColor by animateColorAsState(
+        targetValue = if (isEditMode) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        else MaterialTheme.colorScheme.surface,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "surfaceColor"
+    )
+
     LaunchedEffect(isVisible) {
         if (!isVisible) {
-            delay(130) // wait for shrink + fade to finish (matches anim durations below)
+            delay(130)
             pendingAction?.invoke()
             pendingAction = null
-            // Reset state for potential recomposition (e.g. undo)
             isVisible = true
             offsetX.snapTo(0f)
         }
     }
 
-    // Reset offset when task status changes — fixes re-swipe green bug
     LaunchedEffect(task.id, task.status) {
         offsetX.snapTo(0f)
     }
 
-    // ── Collapse wrapper: card + background shrink together ──
+    // Якщо раптом увімкнули режим редагування, коли картка була трохи зсунута — повертаємо її на місце
+    LaunchedEffect(isEditMode) {
+        if (isEditMode && offsetX.value != 0f) {
+            offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessLow))
+        }
+    }
+
     AnimatedVisibility(
         visible = isVisible,
-        exit = shrinkVertically(
-            animationSpec = tween(140)
-        ) + fadeOut(
-            animationSpec = tween(110)
-        )
+        exit = shrinkVertically(animationSpec = tween(140)) + fadeOut(animationSpec = tween(110)),
+        modifier = modifier
     ) {
-        // Derived visual values
         val currentOffset = offsetX.value
         val progress = (abs(currentOffset) / thresholdPx).coerceIn(0f, 1.5f)
         val isRight = currentOffset > 0
         val isLeft = currentOffset < 0
 
-        // Smooth easing function for visual properties (ease-out feel)
         val easedProgress = 1f - (1f - progress.coerceIn(0f, 1f)).let { it * it }
+        val elevation = lerp(0f, 8f, easedProgress)
+        val scale = lerp(1f, 1.02f, easedProgress)
+        val cornerRadius = lerp(0f, 16f, easedProgress)
 
-        // Sticky peel effect: gentle ramp-up of elevation, scale, corner radius
-        val elevation = lerp(0f, 6f, easedProgress)
-        val scale = lerp(1f, 1.01f, easedProgress)
-        val cornerRadius = lerp(0f, 14f, easedProgress)
-
-        // Background color behind the card — smooth fade-in
-        val bgAlpha = (easedProgress * 0.8f).coerceIn(0f, 0.8f)
+        val bgAlpha = (easedProgress * 0.85f).coerceIn(0f, 0.85f)
         val bgColor: Color = when {
             isRight && !isDone -> SwipeGreen.copy(alpha = bgAlpha)
             isLeft -> SwipeRed.copy(alpha = bgAlpha)
@@ -129,8 +152,8 @@ fun TaskItem(
         }
         val iconAlpha = ((progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
 
-        Box(modifier = modifier.fillMaxWidth()) {
-            // ── Background layer (revealed when content slides) ──
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // ФОНОВИЙ ШАР (Свайп)
             Row(
                 modifier = Modifier
                     .matchParentSize()
@@ -156,13 +179,15 @@ fun TaskItem(
                     Text(
                         text = "Виконано",
                         color = Color.White.copy(alpha = iconAlpha),
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                     )
                 } else if (isLeft) {
                     Text(
                         text = "Видалити",
                         color = Color.White.copy(alpha = iconAlpha),
                         style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Icon(
@@ -173,7 +198,7 @@ fun TaskItem(
                 }
             }
 
-            // ── Content layer with sticky peel effect ──
+            // ШАР З КОНТЕНТОМ
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -185,8 +210,11 @@ fun TaskItem(
                         shape = RoundedCornerShape(cornerRadius.dp)
                         clip = true
                     }
-                    .background(MaterialTheme.colorScheme.surface)
-                    .pointerInput(task.id, task.status) {
+                    .background(surfaceColor)
+                    // Блокуємо свайп, якщо увімкнено режим редагування
+                    .pointerInput(task.id, task.status, isEditMode) {
+                        if (isEditMode) return@pointerInput
+
                         val width = size.width.toFloat()
                         detectHorizontalDragGestures(
                             onDragEnd = {
@@ -197,50 +225,28 @@ fun TaskItem(
                                     val left = cur < 0
 
                                     if (pastThreshold) {
-                                        // Gentle spring slide-off
-                                        val target =
-                                            if (right) width * 1.1f else -width * 1.1f
+                                        val target = if (right) width * 1.1f else -width * 1.1f
                                         offsetX.animateTo(
                                             target,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = 300f
-                                            )
+                                            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 300f)
                                         )
-                                        // Store action, then trigger collapse
                                         pendingAction = {
                                             if (right && !isDone) onDone(task)
                                             else if (left) onDelete(task)
                                         }
                                         isVisible = false
                                     } else {
-                                        // Soft spring back — gentle, no harsh bounce
-                                        offsetX.animateTo(
-                                            0f,
-                                            spring(
-                                                dampingRatio = 0.65f,
-                                                stiffness = Spring.StiffnessMediumLow
-                                            )
-                                        )
+                                        offsetX.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow))
                                     }
                                 }
                             },
                             onDragCancel = {
-                                scope.launch {
-                                    offsetX.animateTo(
-                                        0f,
-                                        spring(
-                                            dampingRatio = 0.7f,
-                                            stiffness = Spring.StiffnessMedium
-                                        )
-                                    )
-                                }
+                                scope.launch { offsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)) }
                             },
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()
                                 scope.launch {
                                     val wasPastThreshold = abs(offsetX.value) > thresholdPx
-
                                     val goingRight = (offsetX.value + dragAmount) > 0
                                     val resistance = when {
                                         goingRight && isDone -> 0.12f
@@ -262,96 +268,71 @@ fun TaskItem(
                     }
                     .padding(horizontal = 16.dp, vertical = 14.dp)
                     .clickable { onClick() }
-                    .alpha(if (isDone) 0.45f else 1f),
+                    .alpha(contentAlpha),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (task.time != null) {
                     Text(
                         text = task.time.toString(),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isDone)
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        else
-                            MaterialTheme.colorScheme.primary,
+                        color = timeColor,
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
+
                 Text(
                     text = task.text,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        textDecoration = if (isDone) TextDecoration.LineThrough
-                        else TextDecoration.None
+                        textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None
                     ),
                     modifier = Modifier.weight(1f),
-                    color = if (isDone)
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    else
-                        MaterialTheme.colorScheme.onSurface
+                    color = textColor
                 )
+
                 if (task.durationMinutes != null) {
                     Text(
                         text = formatDuration(task.durationMinutes),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(
-                            alpha = if (isDone) 0.3f else 0.5f
-                        ),
+                        color = textColor.copy(alpha = 0.6f),
                         modifier = Modifier.padding(start = 8.dp)
                     )
+                }
+
+                // ПРЕМІАЛЬНА КНОПКА ВИДАЛЕННЯ: Плавно виїжджає справа
+                AnimatedVisibility(
+                    visible = isEditMode,
+                    enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
+                            expandHorizontally(expandFrom = Alignment.End, animationSpec = spring(stiffness = Spring.StiffnessLow)),
+                    exit = fadeOut(spring(stiffness = Spring.StiffnessLow)) +
+                            shrinkHorizontally(shrinkTowards = Alignment.End, animationSpec = spring(stiffness = Spring.StiffnessLow))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.errorContainer)
+                            .clickable {
+                                if (isHapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                // Використовуємо ту ж систему pendingAction для красивого згортання картки
+                                pendingAction = { onDelete(task) }
+                                isVisible = false
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.DeleteOutline,
+                            contentDescription = "Видалити",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-@Composable
-private fun EditModeTaskItem(
-    task: Task,
-    onDelete: (Task) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isDone = task.status == Status.DONE
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-            .alpha(if (isDone) 0.45f else 1f),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (task.time != null) {
-            Text(
-                text = task.time.toString(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-        }
-        Text(
-            text = task.text,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        if (task.durationMinutes != null) {
-            Text(
-                text = formatDuration(task.durationMinutes),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-        }
-        androidx.compose.material3.IconButton(onClick = { onDelete(task) }) {
-            Icon(
-                imageVector = Icons.Outlined.DeleteOutline,
-                contentDescription = "Видалити",
-                tint = MaterialTheme.colorScheme.error
-            )
-        }
-    }
-}
+private fun lerp(start: Float, end: Float, fraction: Float): Float = start + (end - start) * fraction
 
-private fun lerp(start: Float, end: Float, fraction: Float): Float =
-    start + (end - start) * fraction
-
-private fun formatDuration(minutes: Int): String =
-    if (minutes < 60) "${minutes}хв" else "${minutes / 60}год"
+private fun formatDuration(minutes: Int): String = if (minutes < 60) "${minutes}хв" else "${minutes / 60}год"

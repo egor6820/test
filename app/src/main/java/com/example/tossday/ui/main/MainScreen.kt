@@ -234,24 +234,31 @@ private fun TasksListSection(
             item(key = "edit_mode_header", contentType = "header") {
                 Row(
                     modifier = Modifier
+                        // МАГІЯ ПЛАВНОСТІ: Заголовок м'яко виштовхує задачі вниз
+                        .animateItem(
+                            fadeInSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                            fadeOutSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                            placementSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
+                        )
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
+                        .clip(MaterialTheme.shapes.large) // Більш преміальне заокруглення
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)) // Елегантніший колір
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = "Режим редагування",
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                     TextButton(onClick = onExitEditMode) {
                         Text(
                             text = "Готово",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 }
@@ -269,7 +276,16 @@ private fun TasksListSection(
                 onDelete = onDelete,
                 onClick = { onTaskClick(task) },
                 isHapticEnabled = isHapticEnabled,
-                isEditMode = isEditMode
+                isEditMode = isEditMode,
+                // Додаємо animateItem сюди, якщо його раніше не було
+                modifier = Modifier.animateItem(
+                    fadeInSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                    fadeOutSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                    placementSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                    )
+                )
             )
         }
     }
