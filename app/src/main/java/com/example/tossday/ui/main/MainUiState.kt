@@ -5,11 +5,13 @@ import com.example.tossday.domain.model.Chip
 import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Task
 import java.time.LocalDate
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 
 data class MainUiState(
     val quickNoteText: String = "",
     val chips: List<Chip> = emptyList(),
-    val dayLoads: List<DayLoad> = emptyList(),
+    val dayLoads: ImmutableList<DayLoad> = persistentListOf(),
     val selectedDate: LocalDate = LocalDate.now(),
     val selectedDayTasks: List<Task> = emptyList(),
     val dragState: DragState = DragState(),

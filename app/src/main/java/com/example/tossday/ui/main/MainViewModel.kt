@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.tossday.data.repository.QuickNoteRepository
+import com.example.tossday.data.repository.SettingsRepository
 import com.example.tossday.data.repository.TaskRepository
 import com.example.tossday.domain.model.Chip
 import com.example.tossday.domain.model.Status
@@ -13,6 +14,7 @@ import com.example.tossday.domain.usecase.GetDayLoadUseCase
 import com.example.tossday.domain.usecase.ParseChipsUseCase
 import com.example.tossday.notifications.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.collections.immutable.toImmutableList // ПОТРІБЕН ЦЕЙ ІМПОРТ
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +24,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.example.tossday.data.repository.SettingsRepository
 import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
@@ -40,12 +41,13 @@ class MainViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(
         MainUiState(
+            // ФІКС 1: Додано .toImmutableList()
             dayLoads = (-7..30).map { offset ->
                 val date = LocalDate.now().plusDays(offset.toLong())
                 com.example.tossday.domain.model.DayLoad(
                     date = date, taskCount = 0, totalMinutes = 0, percent = 0f
                 )
-            }
+            }.toImmutableList()
         )
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
@@ -66,6 +68,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             getDayLoad().collect { loadsFromDb ->
                 val today = LocalDate.now()
+                // ФІКС 2: Додано .toImmutableList()
                 val window = (-7..30).map { offset ->
                     val date = today.plusDays(offset.toLong())
                     loadsFromDb.find { it.date == date } ?: com.example.tossday.domain.model.DayLoad(
@@ -74,7 +77,7 @@ class MainViewModel @Inject constructor(
                         totalMinutes = 0,
                         percent = 0f
                     )
-                }
+                }.toImmutableList()
                 _uiState.update { it.copy(dayLoads = window) }
             }
         }
@@ -87,12 +90,11 @@ class MainViewModel @Inject constructor(
                 .collect { tasks -> _uiState.update { it.copy(selectedDayTasks = tasks) } }
         }
 
-        // Clean up tasks older than 60 days automatically
         viewModelScope.launch {
             try {
                 taskRepository.deleteOldTasks(LocalDate.now().minusDays(7))
             } catch (e: Exception) {
-                // Ignore cleanup errors to ensure app stability
+                // Ignore cleanup errors
             }
         }
     }
@@ -105,7 +107,6 @@ class MainViewModel @Inject constructor(
     fun onChipAssigned(chip: Chip, date: LocalDate, time: LocalTime? = null) {
         viewModelScope.launch {
             assignChipToDay(chip, date, time)
-            // Schedule reminder if time is set
             if (time != null) {
                 val tasks = taskRepository.getByDate(date).first()
                 tasks.firstOrNull { it.text == chip.text && it.time == time }

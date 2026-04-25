@@ -1,31 +1,24 @@
 package com.example.tossday.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,6 +38,7 @@ fun DayTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 1. КЕШУВАННЯ КОНСТАНТ (Виконується лише при зміні дати)
     val dayOfWeekStr = remember(dayLoad.date) {
         dayLoad.date.dayOfWeek.getDisplayName(TextStyle.SHORT, ukLocale).uppercase()
     }
@@ -55,74 +49,67 @@ fun DayTile(
         dayLoad.date == LocalDate.now()
     }
 
+    // 2. ОПТИМІЗОВАНІ АНІМАЦІЇ
     val scale by animateFloatAsState(
         targetValue = when {
-            isDragHovered -> 1.05f
+            isDragHovered -> 1.06f
             isSelected -> 1.02f
             else -> 1f
         },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "tileScale"
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+        label = "scale"
     )
 
     val animatedPercent by animateFloatAsState(
         targetValue = dayLoad.percent.coerceIn(0f, 1f),
         animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "loadPercent"
-    )
-
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isDragHovered -> MaterialTheme.colorScheme.primary
-            isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-            else -> Color.Transparent
-        },
-        animationSpec = tween(300), label = "borderColor"
+        label = "percent"
     )
 
     val containerColor by animateColorAsState(
         targetValue = when {
-            isSelected -> MaterialTheme.colorScheme.surfaceVariant
-            isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
+            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+            isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
             else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
-        animationSpec = tween(300), label = "containerColor"
+        animationSpec = tween(250), label = "bg"
     )
 
-    val textColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.onSurfaceVariant
-        else MaterialTheme.colorScheme.onSurface,
-        animationSpec = tween(300), label = "textColor"
-    )
+    val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+    else MaterialTheme.colorScheme.onSurface
 
-    // ЗАМІНА CARD НА ЛЕГКИЙ BOX
+    val progressColor = dayLoad.loadColor()
+
+    // 3. ЛОГІКА МАЛЮВАННЯ ТА ШАРІВ
     Box(
         modifier = modifier
             .width(74.dp)
             .graphicsLayer {
+                // Використовуємо відеокарту для трансформацій
                 scaleX = scale
                 scaleY = scale
-                shadowElevation = if (isSelected) 8f else 0f
-                shape = RoundedCornerShape(18.dp)
+                // shadowElevation робимо невеликим, щоб не перевантажувати GPU
+                shadowElevation = if (isSelected) 6f else 0f
+                shape = RoundedCornerShape(20.dp)
                 clip = false
+                // Магічний параметр для стабільності прозорості
+                compositingStrategy = CompositingStrategy.ModulateAlpha
             }
-            .clip(RoundedCornerShape(18.dp)) // Обрізка для правильного ripple-ефекту натискання
+            .clip(RoundedCornerShape(20.dp))
             .background(containerColor)
             .border(
-                width = if (isSelected || isDragHovered) 1.5.dp else 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(18.dp)
+                width = if (isSelected || isDragHovered) 1.5.dp else 0.5.dp,
+                color = if (isSelected || isDragHovered) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(20.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 14.dp),
+            .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = dayOfWeekStr,
@@ -130,26 +117,45 @@ fun DayTile(
                 fontWeight = FontWeight.Bold,
                 color = textColor.copy(alpha = 0.5f)
             )
+
             Text(
                 text = dayOfMonthStr,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (isToday && !isSelected) MaterialTheme.colorScheme.primary else textColor
             )
-            LinearProgressIndicator(
-                progress = { animatedPercent },
+
+            // 4. НАДШВИДКИЙ ПРОГРЕС БАР (Замість LinearProgressIndicator)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp),
-                color = dayLoad.loadColor().copy(alpha = 0.9f),
-                trackColor = textColor.copy(alpha = 0.1f),
-                strokeCap = StrokeCap.Round
+                    .height(5.dp)
+                    .padding(horizontal = 10.dp)
+                    .drawBehind {
+                        val trackColor = textColor.copy(alpha = 0.1f)
+                        val radius = size.height / 2
+
+                        // Малюємо фон (трек)
+                        drawRoundRect(
+                            color = trackColor,
+                            size = size,
+                            cornerRadius = CornerRadius(radius, radius)
+                        )
+
+                        // Малюємо заповнення (прогрес)
+                        drawRoundRect(
+                            color = progressColor,
+                            size = Size(width = size.width * animatedPercent, height = size.height),
+                            cornerRadius = CornerRadius(radius, radius)
+                        )
+                    }
             )
+
             Text(
                 text = dayLoad.taskCount.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = textColor.copy(alpha = 0.4f)
+                fontWeight = FontWeight.Bold,
+                color = progressColor.copy(alpha = 0.8f)
             )
         }
     }

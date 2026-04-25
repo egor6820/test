@@ -2,12 +2,14 @@ package com.example.tossday.ui.main
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.ScrollableDefaults // ОСЬ ЦЕЙ ІМПОРТ БУВ ПОТРІБЕН
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -15,10 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle // НОВИЙ ІМПОРТ
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Task
 import com.example.tossday.ui.components.ChipsRow
@@ -39,9 +42,7 @@ fun MainScreen(
     onSettingsClick: () -> Unit,
     viewModel: MainViewModel = hiltViewModel()
 ) {
-    // ОПТИМІЗАЦІЯ БАТАРЕЇ: Безпечний збір стану з урахуванням життєвого циклу
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
     val snackbarHostState = remember { SnackbarHostState() }
     var editingTimeForTask by remember { mutableStateOf<Task?>(null) }
 
@@ -90,6 +91,7 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // СЕКЦІЯ ДНІВ (Виправлена)
             DaysRowSection(
                 dayLoads = uiState.dayLoads,
                 selectedDate = uiState.selectedDate,
@@ -135,8 +137,6 @@ fun MainScreen(
         )
     }
 }
-
-// === ІЗОЛЬОВАНІ КОМПОНЕНТИ ===
 
 @Composable
 private fun TopBarSection(
@@ -184,11 +184,8 @@ private fun DaysRowSection(
     isHapticEnabled: Boolean,
     onDaySelected: (LocalDate) -> Unit
 ) {
-    val rowState = rememberLazyListState()
-
-    LaunchedEffect(Unit) {
-        rowState.scrollToItem(7)
-    }
+    // Встановлюємо початковий скрол одразу при створенні стейту
+    val rowState = rememberLazyListState(initialFirstVisibleItemIndex = 7)
 
     LazyRow(
         state = rowState,
@@ -200,16 +197,15 @@ private fun DaysRowSection(
             key = { it.date.toEpochDay() },
             contentType = { "dayTile" }
         ) { dayLoad ->
-            val cachedOnClick = remember(dayLoad.date) {
-                { onDaySelected(dayLoad.date) }
-            }
+            val isSelected = dayLoad.date == selectedDate
+            val isHovered = dayLoad.date == hoveredDate
 
             DayTile(
                 dayLoad = dayLoad,
-                isSelected = dayLoad.date == selectedDate,
-                isDragHovered = dayLoad.date == hoveredDate,
+                isSelected = isSelected,
+                isDragHovered = isHovered,
                 isHapticEnabled = isHapticEnabled,
-                onClick = cachedOnClick
+                onClick = { onDaySelected(dayLoad.date) }
             )
         }
     }
@@ -234,7 +230,6 @@ private fun TasksListSection(
             item(key = "edit_mode_header", contentType = "header") {
                 Row(
                     modifier = Modifier
-                        // МАГІЯ ПЛАВНОСТІ: Заголовок м'яко виштовхує задачі вниз
                         .animateItem(
                             fadeInSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
                             fadeOutSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
@@ -242,8 +237,8 @@ private fun TasksListSection(
                         )
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .clip(MaterialTheme.shapes.large) // Більш преміальне заокруглення
-                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)) // Елегантніший колір
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -277,7 +272,6 @@ private fun TasksListSection(
                 onClick = { onTaskClick(task) },
                 isHapticEnabled = isHapticEnabled,
                 isEditMode = isEditMode,
-                // Додаємо animateItem сюди, якщо його раніше не було
                 modifier = Modifier.animateItem(
                     fadeInSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
                     fadeOutSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow),

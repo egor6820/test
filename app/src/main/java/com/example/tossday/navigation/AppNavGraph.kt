@@ -31,7 +31,7 @@ fun AppNavGraph(
     // Налаштування пружини для преміального перегортання
     val springSpec = spring<androidx.compose.ui.unit.IntOffset>(
         dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessLow
+        stiffness = Spring.StiffnessMediumLow
     )
 
     NavHost(
