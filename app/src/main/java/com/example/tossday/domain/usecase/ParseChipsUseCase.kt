@@ -27,18 +27,24 @@ class ParseChipsUseCase @Inject constructor() {
                 listOf(stripped)
             }
 
-            for (segment in segments) {
+            segments.forEachIndexed { segIdx, segment ->
                 val clean = segment.trim()
-                if (clean.length < 2) continue // Changed from 3 to 2 to allow short acronyms like "ML"
-                if (!seen.add(clean.lowercase())) continue
+                if (clean.length < 2) return@forEachIndexed // дозволяємо короткі акроніми ("ML")
 
                 val duration = parseDuration(clean)
+                val text = durationPattern.replace(clean, "").trim()
+                if (text.isEmpty()) return@forEachIndexed
+                if (!seen.add(text.lowercase())) return@forEachIndexed
+
                 chips.add(
                     Chip(
-                        text = durationPattern.replace(clean, "").trim(),
+                        text = text,
                         durationMinutes = duration,
                         sourceStart = lineStart,
-                        sourceEnd = lineStart + rawLine.length
+                        sourceEnd = lineStart + rawLine.length,
+                        // Стабільний id поки користувач дописує символи в той самий рядок:
+                        // lineStart лишається тим самим, поки попередні рядки не змінили довжину.
+                        id = lineStart.toLong() * 1000L + segIdx
                     )
                 )
             }

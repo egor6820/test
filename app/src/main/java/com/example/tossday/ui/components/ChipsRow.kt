@@ -1,6 +1,7 @@
 package com.example.tossday.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,8 +11,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -22,7 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,11 +42,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.tossday.domain.model.Chip
 
-@OptIn(ExperimentalFoundationApi::class) // Необхідно для анімації переміщення елементів списку
+// Виносимо специ анімацій на верхній рівень — щоб не виділяти об'єкти на кожній рекомпозиції.
+private val ChipPlacementSpec = spring<androidx.compose.ui.unit.IntOffset>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow
+)
+private val ChipFadeSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow
+)
+private val ChipResizeSpec = spring<androidx.compose.ui.unit.IntSize>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow
+)
+private val ChipPressSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioMediumBouncy,
+    stiffness = Spring.StiffnessLow
+)
+
 @Composable
 fun ChipsRow(
     chips: List<Chip>,
@@ -56,22 +73,29 @@ fun ChipsRow(
     isHapticEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val animatedKeys = rememberSaveable(
-        saver = listSaver(
+    // Зберігаємо id вже-проаніміваних чипів, щоб після ротації / повторної композиції
+    // не програвати enter-анімацію для тих же елементів.
+    val animatedIds = rememberSaveable(
+        saver = listSaver<MutableSet<Long>, Long>(
             save = { it.toList() },
             restore = { it.toMutableSet() }
         )
-    ) { mutableSetOf<String>() }
+    ) { mutableSetOf<Long>() }
 
     val listState = rememberLazyListState()
-    val size = chips.size
 
-    LaunchedEffect(size) {
-        val currentSet = (0 until size).map { i -> "chip_${size - 1 - i}" }.toSet()
-        val hasNew = currentSet.any { it !in animatedKeys }
-        animatedKeys.retainAll(currentSet)
-        // Плавний скрол на початок при додаванні нового чипа
-        if (hasNew) listState.animateScrollToItem(0)
+    // Якщо з'явився справді новий чип (id, якого ще не бачили) — миттєво приклеюємо
+    // прокрутку до 0. Снап замість animateScrollToItem прибирає ефект "виїжджає з-за екрана",
+    // бо чип одразу опиняється на своїй позиції, а enter-анімація грає в місці.
+    // Дописування символів у вже існуючий чип id не змінює, тому жодного скролу не буде.
+    LaunchedEffect(chips) {
+        val incomingIds = chips.mapTo(HashSet(chips.size)) { it.id }
+        val hasNew = incomingIds.any { it !in animatedIds }
+        animatedIds.retainAll(incomingIds)
+
+        if (hasNew && chips.isNotEmpty() && listState.firstVisibleItemIndex != 0) {
+            listState.scrollToItem(0)
+        }
     }
 
     LazyRow(
@@ -80,55 +104,29 @@ fun ChipsRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(
+        items(
             items = chips,
-            key = { index, _ -> "chip_${size - 1 - index}" },
-            contentType = { _, _ -> "chipItem" } // Оптимізація рендерингу
-        ) { index, chip ->
-            val key = "chip_${size - 1 - index}"
-            val transitionState = remember(key) {
-                val already = key in animatedKeys
+            key = { it.id }, // СТАБІЛЬНИЙ ключ: не змінюється поки користувач дописує символи
+            contentType = { "chipItem" }
+        ) { chip ->
+            val id = chip.id
+            val transitionState = remember(id) {
+                val already = id in animatedIds
                 MutableTransitionState(initialState = already).apply { targetState = true }
             }
-            SideEffect { animatedKeys.add(key) }
+            SideEffect { animatedIds.add(id) }
 
             AnimatedVisibility(
                 visibleState = transitionState,
-                // ВИПРАВЛЕНО: Використовуємо animateItem() замість animateItemPlacement()
                 modifier = Modifier.animateItem(
-                    fadeInSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessLow
-                    ),
-                    fadeOutSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessLow
-                    ),
-                    placementSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessLow
-                    )
+                    fadeInSpec = ChipFadeSpec,
+                    fadeOutSpec = ChipFadeSpec,
+                    placementSpec = ChipPlacementSpec
                 ),
-                // Преміальна анімація появи: знизу-вгору + збільшення + проявлення
-                enter = fadeIn(tween(250)) +
-                        slideInVertically(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
-                            initialOffsetY = { it } // Виїжджає повністю знизу
-                        ) +
-                        scaleIn(
-                            initialScale = 0.8f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            )
-                        ),
-                exit = fadeOut(tween(150)) + scaleOut(
-                    targetScale = 0.8f,
-                    animationSpec = tween(150)
-                )
+                // Чип "виринає" в своїй фінальній позиції, без зсуву збоку:
+                // старі чипи самі плавно з'їжджають вправо завдяки animateItem placement.
+                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.7f, animationSpec = tween(220)),
+                exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.7f, animationSpec = tween(140))
             ) {
                 ChipItem(
                     chip = chip,
@@ -152,13 +150,9 @@ private fun ChipItem(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // Пружинна реакція на натискання
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.92f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
+        animationSpec = ChipPressSpec,
         label = "chipScale"
     )
 
@@ -169,12 +163,14 @@ private fun ChipItem(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
-        // Вимикаємо стандартну тінь для чистішого вигляду
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .widthIn(max = 200.dp)
             .scale(scale)
-            .pointerInput(chip.text) {
+            // Плавно нарощуємо ширину, коли всередині чипа з'являються нові символи —
+            // щоб текст "доповнювався", а не штампував чип кожен раз.
+            .animateContentSize(animationSpec = ChipResizeSpec)
+            .pointerInput(chip.id) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { onDragStart() },
                     onDrag = { _, _ -> }
@@ -189,7 +185,7 @@ private fun ChipItem(
             Text(
                 text = chip.text,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -205,7 +201,7 @@ private fun ChipItem(
                 Text(
                     text = formatDuration(chip.durationMinutes),
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }

@@ -24,31 +24,28 @@ import java.time.LocalDate
 fun AppNavGraph(
     navController: NavHostController = rememberNavController()
 ) {
-    // ГОЛОВНИЙ ФІКС: Створюємо ViewModel тут один раз.
-    // Тепер всі екрани ділять між собою один стан (isEditMode, selectedDate тощо).
     val sharedViewModel: MainViewModel = hiltViewModel()
 
-    // Налаштування пружини для преміального перегортання
-    val springSpec = spring<androidx.compose.ui.unit.IntOffset>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessMediumLow
+    // ФІКС НАВІГАЦІЇ: Жорстка та чуйна пружина, яка миттєво реагує на переривання (клік "Назад")
+    val snappySpring = spring<androidx.compose.ui.unit.IntOffset>(
+        dampingRatio = 0.85f, // Ледь помітна віддача, відчувається природно
+        stiffness = 400f // Висока жорсткість = висока швидкість екрана
     )
 
     NavHost(
         navController = navController,
         startDestination = "main",
-        // Глобальні преміальні анімації переходів
         enterTransition = {
-            slideInHorizontally(initialOffsetX = { it }, animationSpec = springSpec) + fadeIn()
+            slideInHorizontally(initialOffsetX = { it }, animationSpec = snappySpring) + fadeIn()
         },
         exitTransition = {
-            slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = springSpec) + fadeOut()
+            slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = snappySpring) + fadeOut()
         },
         popEnterTransition = {
-            slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = springSpec) + fadeIn()
+            slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = snappySpring) + fadeIn()
         },
         popExitTransition = {
-            slideOutHorizontally(targetOffsetX = { it }, animationSpec = springSpec) + fadeOut()
+            slideOutHorizontally(targetOffsetX = { it }, animationSpec = snappySpring) + fadeOut()
         }
     ) {
         composable("main") {
@@ -59,13 +56,13 @@ fun AppNavGraph(
                 onSettingsClick = {
                     navController.navigate("settings")
                 },
-                viewModel = sharedViewModel // Використовуємо спільну VM
+                viewModel = sharedViewModel
             )
         }
 
         composable("settings") {
             SettingsScreen(
-                viewModel = sharedViewModel, // Використовуємо спільну VM
+                viewModel = sharedViewModel,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -79,7 +76,7 @@ fun AppNavGraph(
             DayDetailScreen(
                 date = date,
                 onBack = { navController.popBackStack() },
-                viewModel = sharedViewModel // Використовуємо спільну VM
+                viewModel = sharedViewModel
             )
         }
     }

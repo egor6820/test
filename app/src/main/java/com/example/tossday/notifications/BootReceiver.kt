@@ -23,13 +23,15 @@ class BootReceiver : BroadcastReceiver() {
     lateinit var dailySummaryScheduler: DailySummaryScheduler
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            dailySummaryScheduler.scheduleDailySummaries()
-            CoroutineScope(Dispatchers.IO).launch {
-                val tasks = taskRepository.getAllFutureTasksWithTime()
-                tasks.forEach { task ->
-                    alarmScheduler.schedule(task)
-                }
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+            intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
+        ) return
+
+        dailySummaryScheduler.scheduleDailySummaries()
+        CoroutineScope(Dispatchers.IO).launch {
+            val tasks = taskRepository.getAllFutureTasksWithTime()
+            tasks.forEach { task ->
+                alarmScheduler.schedule(task)
             }
         }
     }

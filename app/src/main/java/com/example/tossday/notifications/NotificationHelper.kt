@@ -31,7 +31,7 @@ object NotificationHelper {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Нагадування")
             .setContentText(taskText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -52,7 +52,7 @@ object NotificationHelper {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_today)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text) // Fallback for single-line
             .setStyle(NotificationCompat.BigTextStyle().bigText(text)) // Allows multi-line!

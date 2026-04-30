@@ -4,5 +4,6 @@ data class Chip(
     val text: String,
     val durationMinutes: Int?,
     val sourceStart: Int,
-    val sourceEnd: Int
+    val sourceEnd: Int,
+    val id: Long
 )

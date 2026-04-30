@@ -206,7 +206,8 @@ fun QuickCaptureField(
                     TextButton(
                         onClick = {
                             val cleaned = "\n" + text.replace(Regex("\\n{3,}"), "\n\n").trim()
-                            textFieldValue = TextFieldValue(cleaned, TextRange(0))
+                            // Курсор у самому кінці — після останнього завдання, не на верх.
+                            textFieldValue = TextFieldValue(cleaned, TextRange(cleaned.length))
                             onTextChange(cleaned)
                             showCleanupDialog = false
                         }

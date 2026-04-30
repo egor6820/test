@@ -225,15 +225,25 @@ class MainViewModel @Inject constructor(
     }
 
     fun deleteTasksForDay(date: LocalDate) {
-        viewModelScope.launch { taskRepository.deleteForDate(date) }
+        viewModelScope.launch {
+            val tasks = taskRepository.getByDate(date).first()
+            tasks.forEach { alarmScheduler.cancel(it) }
+            taskRepository.deleteForDate(date)
+        }
     }
 
     fun deleteAllTasks() {
-        viewModelScope.launch { taskRepository.deleteAll() }
+        viewModelScope.launch {
+            val tasksWithAlarms = taskRepository.getAllFutureTasksWithTime()
+            tasksWithAlarms.forEach { alarmScheduler.cancel(it) }
+            taskRepository.deleteAll()
+        }
     }
 
     fun resetEverything() {
         viewModelScope.launch {
+            val tasksWithAlarms = taskRepository.getAllFutureTasksWithTime()
+            tasksWithAlarms.forEach { alarmScheduler.cancel(it) }
             taskRepository.deleteAll()
             quickNoteRepository.clearNote()
         }
