@@ -12,6 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 enum class NoteBackground { NONE, LINES, GRID }
+enum class ChipsLayout { LINEAR, WRAP }
 
 @Singleton
 class SettingsRepository @Inject constructor(
@@ -34,6 +35,12 @@ class SettingsRepository @Inject constructor(
         NoteBackground.entries.getOrElse(prefs.getInt(KEY_NOTE_BG, 0)) { NoteBackground.NONE }
     )
     val noteBackground: StateFlow<NoteBackground> = _noteBackground.asStateFlow()
+
+    // Дефолт LINEAR — щоб поведінка для старих користувачів не змінилась.
+    private val _chipsLayout = MutableStateFlow(
+        ChipsLayout.entries.getOrElse(prefs.getInt(KEY_CHIPS_LAYOUT, 0)) { ChipsLayout.LINEAR }
+    )
+    val chipsLayout: StateFlow<ChipsLayout> = _chipsLayout.asStateFlow()
 
     fun setHapticEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_HAPTIC, enabled).apply()
@@ -59,6 +66,11 @@ class SettingsRepository @Inject constructor(
         _noteBackground.value = bg
     }
 
+    fun setChipsLayout(layout: ChipsLayout) {
+        prefs.edit().putInt(KEY_CHIPS_LAYOUT, layout.ordinal).apply()
+        _chipsLayout.value = layout
+    }
+
     private fun loadPinnedDate(): LocalDate? {
         if (!prefs.contains(KEY_PINNED_DATE)) return null
         val epochDay = prefs.getLong(KEY_PINNED_DATE, Long.MIN_VALUE)
@@ -70,5 +82,6 @@ class SettingsRepository @Inject constructor(
         private const val KEY_THEME  = "key_theme"
         private const val KEY_PINNED_DATE = "key_pinned_date"
         private const val KEY_NOTE_BG = "key_note_bg"
+        private const val KEY_CHIPS_LAYOUT = "key_chips_layout"
     }
 }

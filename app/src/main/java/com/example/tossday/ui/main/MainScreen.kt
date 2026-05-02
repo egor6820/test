@@ -187,48 +187,41 @@ fun MainScreen(
             ) {
                 // Якщо alpha == 0, вміст фізично клікабельний, тому вимикаємо рендеринг за умови
                 if (bottomAlpha > 0.01f) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        ChipsRow(
-                            chips = uiState.chips,
-                            onChipTap = { chip -> viewModel.onChipAssigned(chip, uiState.selectedDate) },
-                            onChipDragStart = viewModel::onDragStarted,
-                            isHapticEnabled = uiState.isHapticEnabled
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        DaysRowSection(
-                            dayLoads = uiState.dayLoads,
-                            selectedDate = uiState.selectedDate,
-                            hoveredDate = uiState.dragState.hoveredDate,
-                            pinnedDate = uiState.pinnedDate,
-                            isHapticEnabled = uiState.isHapticEnabled,
-                            onDaySelected = viewModel::onDaySelected,
-                            onDayLongPress = viewModel::togglePinnedDate
-                        )
-
-                        val dateHeaderText = remember(uiState.selectedDate) {
-                            formatSelectedDate(uiState.selectedDate)
-                        }
-                        Text(
-                            text = dateHeaderText,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                        )
-
-                        TasksListSection(
-                            modifier = Modifier.weight(1f),
-                            tasks = uiState.selectedDayTasks,
-                            isEditMode = uiState.isEditMode,
-                            isHapticEnabled = uiState.isHapticEnabled,
-                            onDone = viewModel::onTaskDone,
-                            onDelete = viewModel::onTaskDeleted,
-                            onTaskClick = { editingTimeForTask = it },
-                            onExitEditMode = { viewModel.setEditMode(false) }
-                        )
+                    val dateHeaderText = remember(uiState.selectedDate) {
+                        formatSelectedDate(uiState.selectedDate)
                     }
+
+                    TasksListSection(
+                        modifier = Modifier.fillMaxSize(),
+                        tasks = uiState.selectedDayTasks,
+                        isEditMode = uiState.isEditMode,
+                        isHapticEnabled = uiState.isHapticEnabled,
+                        onDone = viewModel::onTaskDone,
+                        onDelete = viewModel::onTaskDeleted,
+                        onTaskClick = { editingTimeForTask = it },
+                        onExitEditMode = { viewModel.setEditMode(false) },
+                        chipsContent = {
+                            ChipsRow(
+                                chips = uiState.chips,
+                                onChipTap = { chip -> viewModel.onChipAssigned(chip, uiState.selectedDate) },
+                                onChipDragStart = viewModel::onDragStarted,
+                                isHapticEnabled = uiState.isHapticEnabled,
+                                layout = uiState.chipsLayout
+                            )
+                        },
+                        daysContent = {
+                            DaysRowSection(
+                                dayLoads = uiState.dayLoads,
+                                selectedDate = uiState.selectedDate,
+                                hoveredDate = uiState.dragState.hoveredDate,
+                                pinnedDate = uiState.pinnedDate,
+                                isHapticEnabled = uiState.isHapticEnabled,
+                                onDaySelected = viewModel::onDaySelected,
+                                onDayLongPress = viewModel::togglePinnedDate
+                            )
+                        },
+                        headerText = dateHeaderText
+                    )
                 }
             }
         }
@@ -326,6 +319,7 @@ private fun DaysRowSection(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun TasksListSection(
     modifier: Modifier = Modifier,
@@ -335,12 +329,43 @@ private fun TasksListSection(
     onDone: (Task) -> Unit,
     onDelete: (Task) -> Unit,
     onTaskClick: (Task) -> Unit,
-    onExitEditMode: () -> Unit
+    onExitEditMode: () -> Unit,
+    chipsContent: @Composable () -> Unit,
+    daysContent: @Composable () -> Unit,
+    headerText: String
 ) {
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
+        item(key = "chips", contentType = "header") {
+            chipsContent()
+        }
+
+        item(key = "spacer_days", contentType = "header") {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        stickyHeader(key = "days_row", contentType = "header") {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(bottom = 4.dp)
+            ) {
+                daysContent()
+            }
+        }
+
+        item(key = "date_header", contentType = "header") {
+            Text(
+                text = headerText,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+            )
+        }
         if (isEditMode) {
             item(key = "edit_mode_header", contentType = "header") {
                 Row(

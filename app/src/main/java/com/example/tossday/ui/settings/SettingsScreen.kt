@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.tossday.data.repository.ChipsLayout
 import com.example.tossday.data.repository.NoteBackground
 import com.example.tossday.ui.main.MainViewModel
 import com.example.tossday.ui.theme.AppTheme
@@ -194,6 +195,14 @@ fun SettingsScreen(
                     NoteBackgroundPickerItem(
                         current = currentBackground,
                         onSelected = { settingsViewModel.setNoteBackground(it) }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    val currentChipsLayout by settingsViewModel.chipsLayout.collectAsStateWithLifecycle()
+                    ChipsLayoutPickerItem(
+                        current = currentChipsLayout,
+                        onSelected = { settingsViewModel.setChipsLayout(it) }
                     )
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -614,6 +623,135 @@ private fun NoteBackgroundPickerItem(
                                                 strokeWidth = 1f
                                             )
                                             x += spacing
+                                        }
+                                    }
+                                }
+                            }
+                            .then(
+                                if (isSelected) Modifier.border(
+                                    width = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) else Modifier.border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class ChipsLayoutOption(val value: ChipsLayout, val label: String)
+
+@Composable
+private fun ChipsLayoutPickerItem(
+    current: ChipsLayout,
+    onSelected: (ChipsLayout) -> Unit
+) {
+    val options = listOf(
+        ChipsLayoutOption(ChipsLayout.LINEAR, "Рядком"),
+        ChipsLayoutOption(ChipsLayout.WRAP, "Сіткою"),
+    )
+
+    val pillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+    val previewBg = MaterialTheme.colorScheme.surfaceContainerHigh
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+    ) {
+        Text(
+            text = "Розкладка чипів",
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            options.forEach { option ->
+                val isSelected = current == option.value
+
+                val scale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.08f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "chipsLayoutScale"
+                )
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onSelected(option.value) }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 88.dp, height = 44.dp)
+                            .scale(scale)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(previewBg)
+                            .drawBehind {
+                                val pillH = 8.dp.toPx()
+                                val gap = 4.dp.toPx()
+                                val pad = 6.dp.toPx()
+                                val cornerR = pillH / 2
+                                when (option.value) {
+                                    ChipsLayout.LINEAR -> {
+                                        // Один ряд pill-ів, що виходять за правий край (ефект "ковбаси").
+                                        var x = pad
+                                        val y = (size.height - pillH) / 2f
+                                        val widths = listOf(20f, 26f, 22f, 28f, 24f)
+                                        widths.forEach { w ->
+                                            val pw = w.dp.toPx()
+                                            drawRoundRect(
+                                                color = pillColor,
+                                                topLeft = Offset(x, y),
+                                                size = androidx.compose.ui.geometry.Size(pw, pillH),
+                                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerR, cornerR)
+                                            )
+                                            x += pw + gap
+                                        }
+                                    }
+                                    ChipsLayout.WRAP -> {
+                                        val rowSpacing = 4.dp.toPx()
+                                        val totalH = pillH * 2 + rowSpacing
+                                        val topY = (size.height - totalH) / 2f
+                                        val rows = listOf(
+                                            listOf(18f, 22f, 16f),
+                                            listOf(20f, 18f)
+                                        )
+                                        rows.forEachIndexed { i, widths ->
+                                            var x = pad
+                                            val y = topY + i * (pillH + rowSpacing)
+                                            widths.forEach { w ->
+                                                val pw = w.dp.toPx()
+                                                drawRoundRect(
+                                                    color = pillColor,
+                                                    topLeft = Offset(x, y),
+                                                    size = androidx.compose.ui.geometry.Size(pw, pillH),
+                                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerR, cornerR)
+                                                )
+                                                x += pw + gap
+                                            }
                                         }
                                     }
                                 }

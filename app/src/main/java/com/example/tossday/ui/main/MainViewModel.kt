@@ -89,6 +89,12 @@ class MainViewModel @Inject constructor(
             }
         }
 
+        viewModelScope.launch {
+            settingsRepository.chipsLayout.collect { layout ->
+                _uiState.update { it.copy(chipsLayout = layout) }
+            }
+        }
+
         // Об'єднуємо вантаження днів і закріплений день, щоб обчислити фінальний список тайлів
         // одним проходом. Якщо закріплений день поза вікном [-7..+30] — додаємо його в кінець
         // (з реальною статистикою з БД, або порожнім DayLoad якщо завдань немає).

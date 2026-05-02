@@ -1,6 +1,7 @@
 package com.example.tossday.ui.main
 
 import androidx.compose.ui.geometry.Offset
+import com.example.tossday.data.repository.ChipsLayout
 import com.example.tossday.data.repository.NoteBackground
 import com.example.tossday.domain.model.Chip
 import com.example.tossday.domain.model.DayLoad
@@ -22,7 +23,8 @@ data class MainUiState(
     val isEditMode: Boolean = false,
     val pinnedDate: LocalDate? = null,
     val noteBackground: NoteBackground = NoteBackground.NONE,
-    val isFullscreenEditor: Boolean = false
+    val isFullscreenEditor: Boolean = false,
+    val chipsLayout: ChipsLayout = ChipsLayout.LINEAR
 )
 
 data class DragState(
