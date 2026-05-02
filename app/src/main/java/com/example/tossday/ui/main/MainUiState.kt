@@ -21,7 +21,8 @@ data class MainUiState(
     val isHapticEnabled: Boolean = true,
     val isEditMode: Boolean = false,
     val pinnedDate: LocalDate? = null,
-    val noteBackground: NoteBackground = NoteBackground.NONE
+    val noteBackground: NoteBackground = NoteBackground.NONE,
+    val isFullscreenEditor: Boolean = false
 )
 
 data class DragState(

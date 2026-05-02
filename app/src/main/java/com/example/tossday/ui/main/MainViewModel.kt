@@ -45,6 +45,8 @@ class MainViewModel @Inject constructor(
     private val backupRepository: BackupRepository
 ) : ViewModel() {
 
+    private var saveNoteJob: kotlinx.coroutines.Job? = null
+
     private val _uiState = MutableStateFlow(
         MainUiState(
             // ФІКС 1: Додано .toImmutableList()
@@ -134,7 +136,11 @@ class MainViewModel @Inject constructor(
 
     fun onQuickNoteChanged(text: String) {
         _uiState.update { it.copy(quickNoteText = text, chips = parseChips(text)) }
-        viewModelScope.launch { quickNoteRepository.saveNote(text) }
+        saveNoteJob?.cancel()
+        saveNoteJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(500)
+            quickNoteRepository.saveNote(text)
+        }
     }
 
     fun onChipAssigned(chip: Chip, date: LocalDate, time: LocalTime? = null) {
@@ -251,6 +257,10 @@ class MainViewModel @Inject constructor(
 
     fun setEditMode(enabled: Boolean) {
         _uiState.update { it.copy(isEditMode = enabled) }
+    }
+
+    fun setFullscreenEditor(enabled: Boolean) {
+        _uiState.update { it.copy(isFullscreenEditor = enabled) }
     }
 
     /**

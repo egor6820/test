@@ -11,7 +11,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,8 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.tossday.data.repository.NoteBackground
@@ -67,6 +76,21 @@ fun MainScreen(
         }
     }
 
+    val isFullscreen = uiState.isFullscreenEditor
+
+    BackHandler(enabled = isFullscreen) {
+        viewModel.setFullscreenEditor(false)
+    }
+
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+
+    val bottomAlpha by animateFloatAsState(
+        targetValue = if (isFullscreen) 0f else 1f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 300f),
+        label = "bottomAlpha"
+    )
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background
@@ -77,55 +101,136 @@ fun MainScreen(
                 .padding(innerPadding)
                 .imePadding()
         ) {
-            TopBarSection(
-                quickNoteText = uiState.quickNoteText,
-                onNoteChanged = viewModel::onQuickNoteChanged,
-                isHapticEnabled = uiState.isHapticEnabled,
-                noteBackground = uiState.noteBackground,
-                onSettingsClick = onSettingsClick
-            )
+            // Верхня секція (Текстове поле)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = 0.85f,
+                            stiffness = 300f
+                        )
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(
+                            min = if (isFullscreen) screenHeight else 0.dp,
+                            max = if (isFullscreen) screenHeight else 250.dp
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    QuickCaptureField(
+                        text = uiState.quickNoteText,
+                        onTextChange = viewModel::onQuickNoteChanged,
+                        noteBackground = uiState.noteBackground,
+                        isHapticEnabled = uiState.isHapticEnabled,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Settings (зникає) - ставимо ПЕРШИМ, щоб при зникненні він не зсував Close
+                        AnimatedVisibility(
+                            visible = !isFullscreen,
+                            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+                            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut()
+                        ) {
+                            IconButton(
+                                onClick = onSettingsClick,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                    .border(0.5.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f), CircleShape)
+                                    .size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Налаштування",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
 
-            ChipsRow(
-                chips = uiState.chips,
-                onChipTap = { chip -> viewModel.onChipAssigned(chip, uiState.selectedDate) },
-                onChipDragStart = viewModel::onDragStarted,
-                isHapticEnabled = uiState.isHapticEnabled
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // СЕКЦІЯ ДНІВ (Виправлена)
-            DaysRowSection(
-                dayLoads = uiState.dayLoads,
-                selectedDate = uiState.selectedDate,
-                hoveredDate = uiState.dragState.hoveredDate,
-                pinnedDate = uiState.pinnedDate,
-                isHapticEnabled = uiState.isHapticEnabled,
-                onDaySelected = viewModel::onDaySelected,
-                onDayLongPress = viewModel::togglePinnedDate
-            )
-
-            val dateHeaderText = remember(uiState.selectedDate) {
-                formatSelectedDate(uiState.selectedDate)
+                        // Close / Fullscreen (завжди видимий)
+                        IconButton(
+                            onClick = { viewModel.setFullscreenEditor(!isFullscreen) },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                .border(0.5.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f), CircleShape)
+                                .size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Default.Close else Icons.Default.Fullscreen,
+                                contentDescription = if (isFullscreen) "Згорнути" else "На весь екран",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
             }
-            Text(
-                text = dateHeaderText,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-            )
 
-            TasksListSection(
-                modifier = Modifier.weight(1f),
-                tasks = uiState.selectedDayTasks,
-                isEditMode = uiState.isEditMode,
-                isHapticEnabled = uiState.isHapticEnabled,
-                onDone = viewModel::onTaskDone,
-                onDelete = viewModel::onTaskDeleted,
-                onTaskClick = { editingTimeForTask = it },
-                onExitEditMode = { viewModel.setEditMode(false) }
-            )
+            // Нижня секція (Списки)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .graphicsLayer { alpha = bottomAlpha }
+            ) {
+                // Якщо alpha == 0, вміст фізично клікабельний, тому вимикаємо рендеринг за умови
+                if (bottomAlpha > 0.01f) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        ChipsRow(
+                            chips = uiState.chips,
+                            onChipTap = { chip -> viewModel.onChipAssigned(chip, uiState.selectedDate) },
+                            onChipDragStart = viewModel::onDragStarted,
+                            isHapticEnabled = uiState.isHapticEnabled
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        DaysRowSection(
+                            dayLoads = uiState.dayLoads,
+                            selectedDate = uiState.selectedDate,
+                            hoveredDate = uiState.dragState.hoveredDate,
+                            pinnedDate = uiState.pinnedDate,
+                            isHapticEnabled = uiState.isHapticEnabled,
+                            onDaySelected = viewModel::onDaySelected,
+                            onDayLongPress = viewModel::togglePinnedDate
+                        )
+
+                        val dateHeaderText = remember(uiState.selectedDate) {
+                            formatSelectedDate(uiState.selectedDate)
+                        }
+                        Text(
+                            text = dateHeaderText,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                        )
+
+                        TasksListSection(
+                            modifier = Modifier.weight(1f),
+                            tasks = uiState.selectedDayTasks,
+                            isEditMode = uiState.isEditMode,
+                            isHapticEnabled = uiState.isHapticEnabled,
+                            onDone = viewModel::onTaskDone,
+                            onDelete = viewModel::onTaskDeleted,
+                            onTaskClick = { editingTimeForTask = it },
+                            onExitEditMode = { viewModel.setEditMode(false) }
+                        )
+                    }
+                }
+            }
         }
 
         TimePickerSheet(
@@ -143,45 +248,7 @@ fun MainScreen(
     }
 }
 
-@Composable
-private fun TopBarSection(
-    quickNoteText: String,
-    onNoteChanged: (String) -> Unit,
-    isHapticEnabled: Boolean,
-    noteBackground: NoteBackground,
-    onSettingsClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        QuickCaptureField(
-            text = quickNoteText,
-            onTextChange = onNoteChanged,
-            noteBackground = noteBackground,
-            isHapticEnabled = isHapticEnabled,
-            modifier = Modifier.heightIn(max = 250.dp)
-        )
-        IconButton(
-            onClick = onSettingsClick,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                .border(0.5.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f), CircleShape)
-                .size(40.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "Налаштування",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-    }
-}
+// Removed TopBarSection as it is now inlined in MainScreen
 
 @Composable
 private fun DaysRowSection(

@@ -1,12 +1,16 @@
 package com.example.tossday.domain.usecase
 
 import com.example.tossday.domain.model.Chip
+import com.example.tossday.domain.util.stripMarkdown
 import javax.inject.Inject
 
 class ParseChipsUseCase @Inject constructor() {
 
     private val durationPattern = Regex("""(\d+)\s*(m|min|хв|h|год|hr)\b""", RegexOption.IGNORE_CASE)
-    private val bulletPattern = Regex("""^[-*•]\s+|^\d+[.)]\s+""")
+    // bulletPattern не повинен вважати markdown-зірочку (`*курсив*`) bullet-маркером.
+    // Тому замість загального `*` тут залишаємо тільки `-` і `•`. Markdown-`*` обробляється
+    // пізніше через stripMarkdown.
+    private val bulletPattern = Regex("""^[-•]\s+|^\d+[.)]\s+""")
 
     operator fun invoke(text: String): List<Chip> {
         if (text.isBlank()) return emptyList()
@@ -19,7 +23,10 @@ class ParseChipsUseCase @Inject constructor() {
         lines.forEachIndexed { lineIndex, rawLine ->
             val lineStart = cursor
             cursor += rawLine.length + 1
-            if (rawLine.trim().startsWith("//")) return@forEachIndexed
+            val trimmed = rawLine.trim()
+            // Рядки, що починаються з "//" (коментарі) або ">" (цитати), вважаються нотатками 
+            // і НЕ перетворюються на завдання (овали).
+            if (trimmed.startsWith("//") || trimmed.startsWith(">")) return@forEachIndexed
 
             val stripped = bulletPattern.replace(rawLine, "").trim()
             val segments = if (stripped.length > 100) {
@@ -33,7 +40,11 @@ class ParseChipsUseCase @Inject constructor() {
                 if (clean.length < 2) return@forEachIndexed // дозволяємо короткі акроніми ("ML")
 
                 val duration = parseDuration(clean)
-                val text = durationPattern.replace(clean, "").trim()
+                // Видаляємо тривалість, потім ще й markdown-маркери — щоб у БД лежав
+                // чистий "купити хліб", а не "**купити** хліб 30хв". Поле редактора
+                // тримає markdown окремо, в quickNoteText.
+                val withoutDuration = durationPattern.replace(clean, "").trim()
+                val text = stripMarkdown(withoutDuration).trim()
                 if (text.isEmpty()) return@forEachIndexed
                 if (!seen.add(text.lowercase())) return@forEachIndexed
 
