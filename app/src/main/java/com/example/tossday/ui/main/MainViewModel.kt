@@ -28,11 +28,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val taskRepository: TaskRepository,
@@ -45,7 +51,7 @@ class MainViewModel @Inject constructor(
     private val backupRepository: BackupRepository
 ) : ViewModel() {
 
-    private var saveNoteJob: kotlinx.coroutines.Job? = null
+    private var saveNoteJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         MainUiState(
@@ -60,9 +66,15 @@ class MainViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            quickNoteRepository.getNote().collect { savedText ->
-                _uiState.update { it.copy(quickNoteText = savedText, chips = parseChips(savedText)) }
-            }
+            quickNoteRepository.getNote()
+                .distinctUntilChanged() // не перераховуємо якщо текст не змінився
+                .collect { savedText ->
+                    // Парсинг на фоновому потоці — не блокує UI при першому завантаженні
+                    val chips = withContext(Dispatchers.Default) {
+                        parseChips(savedText).toImmutableList()
+                    }
+                    _uiState.update { it.copy(quickNoteText = savedText, chips = chips) }
+                }
         }
 
         viewModelScope.launch {
@@ -113,7 +125,9 @@ class MainViewModel @Inject constructor(
                 .map { it.selectedDate }
                 .distinctUntilChanged()
                 .flatMapLatest { date -> taskRepository.getByDate(date) }
-                .collect { tasks -> _uiState.update { it.copy(selectedDayTasks = tasks) } }
+                .collect { tasks -> 
+                    _uiState.update { it.copy(selectedDayTasks = tasks.toImmutableList()) } 
+                }
         }
 
         viewModelScope.launch {
@@ -135,10 +149,11 @@ class MainViewModel @Inject constructor(
     }
 
     fun onQuickNoteChanged(text: String) {
-        _uiState.update { it.copy(quickNoteText = text, chips = parseChips(text)) }
+        val newChips = parseChips(text).toImmutableList()
+        _uiState.update { it.copy(quickNoteText = text, chips = newChips) }
         saveNoteJob?.cancel()
         saveNoteJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(500)
+            delay(500)
             quickNoteRepository.saveNote(text)
         }
     }

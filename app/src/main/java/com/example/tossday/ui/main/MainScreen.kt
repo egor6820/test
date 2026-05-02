@@ -116,7 +116,7 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(
-                            min = if (isFullscreen) screenHeight else 0.dp,
+                            min = if (isFullscreen) screenHeight else 140.dp,
                             max = if (isFullscreen) screenHeight else 250.dp
                         )
                         .padding(horizontal = 16.dp, vertical = 8.dp)

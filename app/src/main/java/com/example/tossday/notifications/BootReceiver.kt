@@ -28,10 +28,19 @@ class BootReceiver : BroadcastReceiver() {
         ) return
 
         dailySummaryScheduler.scheduleDailySummaries()
+
+        // Без goAsync() Android вважає receiver завершеним одразу після onReceive і може
+        // вбити процес, що щойно стартував для бродкасту, ще до того як alarms перепланують.
+        // pendingResult.finish() повертає процесу нормальний стан після завершення корутини.
+        val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            val tasks = taskRepository.getAllFutureTasksWithTime()
-            tasks.forEach { task ->
-                alarmScheduler.schedule(task)
+            try {
+                val tasks = taskRepository.getAllFutureTasksWithTime()
+                tasks.forEach { task ->
+                    alarmScheduler.schedule(task)
+                }
+            } finally {
+                pendingResult.finish()
             }
         }
     }

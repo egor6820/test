@@ -11,10 +11,10 @@ import kotlinx.collections.immutable.persistentListOf
 
 data class MainUiState(
     val quickNoteText: String = "",
-    val chips: List<Chip> = emptyList(),
+    val chips: ImmutableList<Chip> = persistentListOf(),
     val dayLoads: ImmutableList<DayLoad> = persistentListOf(),
     val selectedDate: LocalDate = LocalDate.now(),
-    val selectedDayTasks: List<Task> = emptyList(),
+    val selectedDayTasks: ImmutableList<Task> = persistentListOf(),
     val dragState: DragState = DragState(),
     val lastAction: UndoableAction? = null,
     val showUndoSnackbar: Boolean = false,

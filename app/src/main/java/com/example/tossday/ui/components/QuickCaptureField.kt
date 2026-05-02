@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +84,8 @@ import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
 import com.example.tossday.data.repository.NoteBackground
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun QuickCaptureField(
@@ -100,7 +103,13 @@ fun QuickCaptureField(
     // на верх (або в інше місце), створюючи відчуття "перелистнуло всі нотатки".
     var initialCursorSet by rememberSaveable { mutableStateOf(false) }
     var showCleanupDialog by remember { mutableStateOf(false) }
-    var hasAutoFocused by rememberSaveable { mutableStateOf(false) }
+    // remember (НЕ saveable): після cold start / повернення з Settings ми ХОЧЕМО, щоб поле
+    // знову забрало фокус і клавіатура відкрилась. Saveable раніше зберігав true і блокував
+    // автофокус, через що користувач відкривав апку — а курсор/клавіатура не з'являлись.
+    var hasAutoFocused by remember { mutableStateOf(false) }
+    // Одноразовий стрибок viewport-а в кінець після першого підвантаження тексту з БД.
+    // Saveable — щоб після Settings → Назад не "перегортувало" вже прокручений вручну текст.
+    var didJumpToEnd by rememberSaveable { mutableStateOf(false) }
 
     // rememberSaveable з TextFieldValue.Saver — зберігає і текст, і selection (позицію
     // курсора/виділення) при навігації Settings ↔ Main. Раніше після повернення selection
@@ -122,9 +131,12 @@ fun QuickCaptureField(
     LaunchedEffect(text) {
         if (textFieldValue.text != text) {
             if (!initialCursorSet && text.isNotEmpty()) {
-                // Перший запуск з уже збереженим текстом — курсор у кінці, без авто-додавання "\n".
-                textFieldValue = TextFieldValue(text, TextRange(text.length))
+                // Перший запуск: якщо текст не закінчується на '\n' — додаємо один Enter,
+                // щоб курсор одразу стояв на порожньому рядку і можна писати без натискання.
+                val finalText = if (text.endsWith("\n")) text else "$text\n"
+                textFieldValue = TextFieldValue(finalText, TextRange(finalText.length))
                 initialCursorSet = true
+                if (finalText != text) onTextChange(finalText)
             } else {
                 // Зовнішня заміна тексту (напр., очищення чернетки) — обмежуємо selection
                 // довжиною нового тексту, щоб поле не намагалося прокрутити в неіснуючу позицію.
@@ -144,6 +156,20 @@ fun QuickCaptureField(
             focusRequester.requestFocus()
             hasAutoFocused = true
         }
+    }
+
+    // Після того, як збережений нотатник підвантажився з БД (initialCursorSet=true),
+    // курсор стоїть у TextRange(end), але зовнішній verticalScroll лишається на 0 — тому
+    // користувач бачить ПОЧАТОК нотатки, а не кінець, де він збирається писати. Чекаємо
+    // на завершення layout (maxValue стає > 0) і одноразово стрибаємо в самий низ.
+    // withTimeoutOrNull захищає від зависання, якщо текст короткий і overflow не виникає.
+    LaunchedEffect(initialCursorSet) {
+        if (!initialCursorSet || didJumpToEnd) return@LaunchedEffect
+        withTimeoutOrNull(500) {
+            snapshotFlow { scrollState.maxValue }.first { it > 0 }
+            scrollState.scrollTo(scrollState.maxValue)
+        }
+        didJumpToEnd = true
     }
 
     val gridColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
