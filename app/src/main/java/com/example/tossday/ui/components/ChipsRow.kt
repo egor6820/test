@@ -85,16 +85,20 @@ fun ChipsRow(
     val listState = rememberLazyListState()
 
     // Якщо з'явився справді новий чип (id, якого ще не бачили) — миттєво приклеюємо
-    // прокрутку до 0. Снап замість animateScrollToItem прибирає ефект "виїжджає з-за екрана",
-    // бо чип одразу опиняється на своїй позиції, а enter-анімація грає в місці.
-    // Дописування символів у вже існуючий чип id не змінює, тому жодного скролу не буде.
+    // прокрутку до самого початку (індекс 0, offset 0). Снап замість animateScrollToItem
+    // прибирає ефект "виїжджає з-за екрана": чип одразу опиняється на своїй позиції,
+    // а enter-анімація (fade+scale) грає в місці. Перевіряємо ще й scrollOffset, бо
+    // користувач міг трохи прокрутити вправо — без цього новий чип лишався б за лівим краєм.
+    // Дописування символів у вже існуючий чип id не змінює, тож жодного скролу не буде.
     LaunchedEffect(chips) {
         val incomingIds = chips.mapTo(HashSet(chips.size)) { it.id }
         val hasNew = incomingIds.any { it !in animatedIds }
         animatedIds.retainAll(incomingIds)
 
-        if (hasNew && chips.isNotEmpty() && listState.firstVisibleItemIndex != 0) {
-            listState.scrollToItem(0)
+        if (hasNew && chips.isNotEmpty()) {
+            val notAtStart = listState.firstVisibleItemIndex != 0 ||
+                    listState.firstVisibleItemScrollOffset != 0
+            if (notAtStart) listState.scrollToItem(0)
         }
     }
 

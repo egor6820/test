@@ -3,10 +3,14 @@ package com.example.tossday.ui.main
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.tossday.data.repository.BackupRepository
+import com.example.tossday.data.repository.ImportResult
 import com.example.tossday.data.repository.QuickNoteRepository
 import com.example.tossday.data.repository.SettingsRepository
 import com.example.tossday.data.repository.TaskRepository
+import com.example.tossday.domain.model.toDomain
 import com.example.tossday.domain.model.Chip
+import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Status
 import com.example.tossday.domain.model.Task
 import com.example.tossday.domain.usecase.AssignChipToDayUseCase
@@ -18,6 +22,7 @@ import kotlinx.collections.immutable.toImmutableList // ПОТРІБЕН ЦЕЙ 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -36,7 +41,8 @@ class MainViewModel @Inject constructor(
     private val assignChipToDay: AssignChipToDayUseCase,
     private val getDayLoad: GetDayLoadUseCase,
     private val alarmScheduler: AlarmScheduler,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val backupRepository: BackupRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -44,9 +50,7 @@ class MainViewModel @Inject constructor(
             // ФІКС 1: Додано .toImmutableList()
             dayLoads = (-7..30).map { offset ->
                 val date = LocalDate.now().plusDays(offset.toLong())
-                com.example.tossday.domain.model.DayLoad(
-                    date = date, taskCount = 0, totalMinutes = 0, percent = 0f
-                )
+                DayLoad(date = date, taskCount = 0, totalMinutes = 0, percent = 0f)
             }.toImmutableList()
         )
     )
@@ -66,19 +70,39 @@ class MainViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            getDayLoad().collect { loadsFromDb ->
+            settingsRepository.noteBackground.collect { bg ->
+                _uiState.update { it.copy(noteBackground = bg) }
+            }
+        }
+
+        // Об'єднуємо вантаження днів і закріплений день, щоб обчислити фінальний список тайлів
+        // одним проходом. Якщо закріплений день поза вікном [-7..+30] — додаємо його в кінець
+        // (з реальною статистикою з БД, або порожнім DayLoad якщо завдань немає).
+        viewModelScope.launch {
+            combine(getDayLoad(), settingsRepository.pinnedDate) { loadsFromDb, pinned ->
                 val today = LocalDate.now()
-                // ФІКС 2: Додано .toImmutableList()
+                val windowStart = today.minusDays(7)
+                val windowEnd = today.plusDays(30)
+
                 val window = (-7..30).map { offset ->
                     val date = today.plusDays(offset.toLong())
-                    loadsFromDb.find { it.date == date } ?: com.example.tossday.domain.model.DayLoad(
-                        date = date,
-                        taskCount = 0,
-                        totalMinutes = 0,
-                        percent = 0f
-                    )
-                }.toImmutableList()
-                _uiState.update { it.copy(dayLoads = window) }
+                    loadsFromDb.find { it.date == date }
+                        ?: DayLoad(date = date, taskCount = 0, totalMinutes = 0, percent = 0f)
+                }
+
+                val pinnedOutside = pinned != null &&
+                        (pinned.isBefore(windowStart) || pinned.isAfter(windowEnd))
+
+                val final = if (pinnedOutside && pinned != null) {
+                    val pinnedLoad = loadsFromDb.find { it.date == pinned }
+                        ?: DayLoad(date = pinned, taskCount = 0, totalMinutes = 0, percent = 0f)
+                    (window + pinnedLoad).toImmutableList()
+                } else {
+                    window.toImmutableList()
+                }
+                final to pinned
+            }.collect { (loads, pinned) ->
+                _uiState.update { it.copy(dayLoads = loads, pinnedDate = pinned) }
             }
         }
 
@@ -92,7 +116,16 @@ class MainViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                taskRepository.deleteOldTasks(LocalDate.now().minusDays(7))
+                // Чистимо старі завдання, але БЕРЕЖЕМО завдання закріпленого дня —
+                // навіть якщо він давно вийшов із вікна 7 днів.
+                val pinned = settingsRepository.pinnedDate.value
+                val cutoff = LocalDate.now().minusDays(7)
+                // Перед фізичним видаленням рядків з БД — скасовуємо їхні alarms у
+                // AlarmManager, інакше PendingIntent-и залишаються в системному кеші
+                // (orphan-и, які накопичуються місяцями).
+                val staleAlarmTasks = taskRepository.getOldTasksWithAlarms(cutoff, pinned)
+                staleAlarmTasks.forEach { alarmScheduler.cancel(it) }
+                taskRepository.deleteOldTasksKeeping(cutoff, pinned)
             } catch (e: Exception) {
                 // Ignore cleanup errors
             }
@@ -220,6 +253,15 @@ class MainViewModel @Inject constructor(
         _uiState.update { it.copy(isEditMode = enabled) }
     }
 
+    /**
+     * Закріпити/відкріпити день. Якщо натиснули на той самий день, що вже закріплений —
+     * відкріплюємо. Якщо на інший — переміщуємо закріплення на нього (одночасно тільки один).
+     */
+    fun togglePinnedDate(date: LocalDate) {
+        val current = _uiState.value.pinnedDate
+        settingsRepository.setPinnedDate(if (current == date) null else date)
+    }
+
     fun clearDraft() {
         viewModelScope.launch { quickNoteRepository.clearNote() }
     }
@@ -246,6 +288,31 @@ class MainViewModel @Inject constructor(
             tasksWithAlarms.forEach { alarmScheduler.cancel(it) }
             taskRepository.deleteAll()
             quickNoteRepository.clearNote()
+        }
+    }
+
+    /** Експорт у JSON-рядок. Викликається з UI, який потім записує його у файл через SAF. */
+    suspend fun exportBackupJson(): String = backupRepository.exportToJson()
+
+    /**
+     * Імпорт з JSON. Перед заміною даних скасовуємо ВСІ існуючі alarms (бо їхні id зникнуть),
+     * після успішного імпорту пере-плануємо alarms для нових завдань з призначеним часом.
+     * Повертає текст для snackbar (успіх або помилка).
+     */
+    suspend fun importBackupJson(json: String): String {
+        // Скасовуємо всі активні alarms (поточні task id скоро зникнуть з БД).
+        val existingAlarmTasks = taskRepository.getAllFutureTasksWithTime()
+        existingAlarmTasks.forEach { alarmScheduler.cancel(it) }
+
+        return when (val result = backupRepository.importFromJson(json)) {
+            is ImportResult.Success -> {
+                // Пере-плануємо alarms для імпортованих завдань з часом.
+                result.tasksWithAlarms.forEach { entity ->
+                    alarmScheduler.schedule(entity.toDomain())
+                }
+                "Імпортовано: ${result.taskCount} завдань"
+            }
+            is ImportResult.Error -> "Помилка імпорту: ${result.reason}"
         }
     }
 }

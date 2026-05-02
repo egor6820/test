@@ -1,5 +1,8 @@
 package com.example.tossday.ui.settings
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -15,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Refresh
@@ -23,17 +28,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.tossday.data.repository.NoteBackground
 import com.example.tossday.ui.main.MainViewModel
 import com.example.tossday.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +78,83 @@ fun SettingsScreen(
     }
 
     val settingsViewModel: SettingsHolderViewModel = hiltViewModel()
+
+    val context = LocalContext.current
+    var importPendingUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var isBackupBusy by remember { mutableStateOf(false) }
+
+    // SAF: створює новий файл у місці на вибір користувача (Drive/Downloads/...).
+    // mimeType "application/json" — частина систем не дозволить інакше зберегти.
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            isBackupBusy = true
+            try {
+                val json = viewModel.exportBackupJson()
+                context.contentResolver.openOutputStream(uri, "wt")?.use { os ->
+                    os.write(json.toByteArray(Charsets.UTF_8))
+                }
+                snackbarHostState.showSnackbar("Резервну копію створено", duration = SnackbarDuration.Short)
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar("Помилка експорту: ${e.message}", duration = SnackbarDuration.Short)
+            } finally {
+                isBackupBusy = false
+            }
+        }
+    }
+
+    // SAF: відкриває довільний файл і дає тимчасовий read-доступ.
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        importPendingUri = uri // показуємо діалог підтвердження перш ніж замінити дані
+    }
+
+    if (importPendingUri != null) {
+        AlertDialog(
+            onDismissRequest = { importPendingUri = null },
+            title = { Text("Замінити поточні дані?") },
+            text = {
+                Text(
+                    "Імпорт повністю замінить усі завдання, чернетку та налаштування на дані з вибраного файлу. Цю дію неможливо скасувати."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uri = importPendingUri ?: return@TextButton
+                    importPendingUri = null
+                    scope.launch {
+                        isBackupBusy = true
+                        try {
+                            val json = context.contentResolver.openInputStream(uri)?.use { input ->
+                                input.bufferedReader(Charsets.UTF_8).readText()
+                            } ?: ""
+                            if (json.isBlank()) {
+                                snackbarHostState.showSnackbar("Файл порожній")
+                            } else {
+                                val msg = viewModel.importBackupJson(json)
+                                snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+                            }
+                        } catch (e: Exception) {
+                            snackbarHostState.showSnackbar("Не вдалося прочитати файл: ${e.message}")
+                        } finally {
+                            isBackupBusy = false
+                        }
+                    }
+                }) {
+                    Text("Замінити")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { importPendingUri = null }) {
+                    Text("Скасувати")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -102,6 +190,14 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+                    val currentBackground by settingsViewModel.noteBackground.collectAsStateWithLifecycle()
+                    NoteBackgroundPickerItem(
+                        current = currentBackground,
+                        onSelected = { settingsViewModel.setNoteBackground(it) }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
                     SettingsItem(
                         icon = Icons.Outlined.Refresh,
                         title = "Тактильний відгук",
@@ -129,6 +225,32 @@ fun SettingsScreen(
                             )
                         },
                         onClick = { viewModel.setEditMode(!uiState.isEditMode) }
+                    )
+                }
+            }
+
+            item {
+                SettingsGroup(title = "Резервна копія") {
+                    SettingsItem(
+                        icon = Icons.Outlined.CloudUpload,
+                        title = "Експорт у файл",
+                        subtitle = "Збережіть JSON-файл у Drive чи Downloads",
+                        onClick = if (isBackupBusy) null else {
+                            {
+                                val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.US)
+                                    .format(Date())
+                                exportLauncher.launch("tossday_backup_$stamp.json")
+                            }
+                        }
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    SettingsItem(
+                        icon = Icons.Outlined.CloudDownload,
+                        title = "Імпорт з файлу",
+                        subtitle = "Замінить усі поточні дані",
+                        onClick = if (isBackupBusy) null else {
+                            { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
+                        }
                     )
                 }
             }
@@ -383,6 +505,129 @@ private fun ThemePickerItem(
                                     color = MaterialTheme.colorScheme.primary,
                                     shape = CircleShape
                                 ) else Modifier
+                            )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class NoteBackgroundOption(val value: NoteBackground, val label: String)
+
+@Composable
+private fun NoteBackgroundPickerItem(
+    current: NoteBackground,
+    onSelected: (NoteBackground) -> Unit
+) {
+    val options = listOf(
+        NoteBackgroundOption(NoteBackground.NONE, "Без фону"),
+        NoteBackgroundOption(NoteBackground.LINES, "Лінійка"),
+        NoteBackgroundOption(NoteBackground.GRID, "Клітинка"),
+    )
+
+    val lineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
+    val previewBg = MaterialTheme.colorScheme.surfaceContainerHigh
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+    ) {
+        Text(
+            text = "Фон поля заміток",
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            options.forEach { option ->
+                val isSelected = current == option.value
+
+                val scale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.08f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "bgScale"
+                )
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onSelected(option.value) }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 64.dp, height = 44.dp)
+                            .scale(scale)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(previewBg)
+                            .drawBehind {
+                                val spacing = 8.dp.toPx()
+                                when (option.value) {
+                                    NoteBackground.NONE -> Unit
+                                    NoteBackground.LINES -> {
+                                        var y = spacing
+                                        while (y < size.height) {
+                                            drawLine(
+                                                color = lineColor,
+                                                start = Offset(0f, y),
+                                                end = Offset(size.width, y),
+                                                strokeWidth = 1f
+                                            )
+                                            y += spacing
+                                        }
+                                    }
+                                    NoteBackground.GRID -> {
+                                        var y = spacing
+                                        while (y < size.height) {
+                                            drawLine(
+                                                color = lineColor,
+                                                start = Offset(0f, y),
+                                                end = Offset(size.width, y),
+                                                strokeWidth = 1f
+                                            )
+                                            y += spacing
+                                        }
+                                        var x = spacing
+                                        while (x < size.width) {
+                                            drawLine(
+                                                color = lineColor,
+                                                start = Offset(x, 0f),
+                                                end = Offset(x, size.height),
+                                                strokeWidth = 1f
+                                            )
+                                            x += spacing
+                                        }
+                                    }
+                                }
+                            }
+                            .then(
+                                if (isSelected) Modifier.border(
+                                    width = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) else Modifier.border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
                             )
                     )
                     Spacer(Modifier.height(8.dp))

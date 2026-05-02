@@ -4,9 +4,13 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -15,11 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.tossday.domain.model.DayLoad
@@ -34,10 +38,13 @@ fun DayTile(
     dayLoad: DayLoad,
     isSelected: Boolean,
     isDragHovered: Boolean,
+    isPinned: Boolean = false,
     isHapticEnabled: Boolean = true,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     // 1. КЕШУВАННЯ КОНСТАНТ (Виконується лише при зміні дати)
     val dayOfWeekStr = remember(dayLoad.date) {
         dayLoad.date.dayOfWeek.getDisplayName(TextStyle.SHORT, ukLocale).uppercase()
@@ -98,12 +105,29 @@ fun DayTile(
             .clip(RoundedCornerShape(20.dp))
             .background(containerColor)
             .border(
-                width = if (isSelected || isDragHovered) 1.5.dp else 0.5.dp,
-                color = if (isSelected || isDragHovered) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                width = when {
+                    isSelected || isDragHovered -> 1.5.dp
+                    isPinned -> 1.dp
+                    else -> 0.5.dp
+                },
+                color = when {
+                    isSelected || isDragHovered -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    isPinned -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                    else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                },
                 shape = RoundedCornerShape(20.dp)
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick?.let {
+                    {
+                        if (isHapticEnabled) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                        it()
+                    }
+                }
+            )
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -157,6 +181,25 @@ fun DayTile(
                 fontWeight = FontWeight.Bold,
                 color = progressColor.copy(alpha = 0.8f)
             )
+        }
+
+        if (isPinned) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 4.dp)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PushPin,
+                    contentDescription = "Закріплено",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(10.dp)
+                )
+            }
         }
     }
 }

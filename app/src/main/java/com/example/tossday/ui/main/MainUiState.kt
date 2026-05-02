@@ -1,6 +1,7 @@
 package com.example.tossday.ui.main
 
 import androidx.compose.ui.geometry.Offset
+import com.example.tossday.data.repository.NoteBackground
 import com.example.tossday.domain.model.Chip
 import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Task
@@ -18,7 +19,9 @@ data class MainUiState(
     val lastAction: UndoableAction? = null,
     val showUndoSnackbar: Boolean = false,
     val isHapticEnabled: Boolean = true,
-    val isEditMode: Boolean = false
+    val isEditMode: Boolean = false,
+    val pinnedDate: LocalDate? = null,
+    val noteBackground: NoteBackground = NoteBackground.NONE
 )
 
 data class DragState(

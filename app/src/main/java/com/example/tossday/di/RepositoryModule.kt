@@ -2,7 +2,9 @@ package com.example.tossday.di
 
 import com.example.tossday.data.local.QuickNoteDao
 import com.example.tossday.data.local.TaskDao
+import com.example.tossday.data.repository.BackupRepository
 import com.example.tossday.data.repository.QuickNoteRepository
+import com.example.tossday.data.repository.SettingsRepository
 import com.example.tossday.data.repository.TaskRepository
 import dagger.Module
 import dagger.Provides
@@ -23,4 +25,13 @@ object RepositoryModule {
     @Singleton
     fun provideQuickNoteRepository(quickNoteDao: QuickNoteDao): QuickNoteRepository =
         QuickNoteRepository(quickNoteDao)
+
+    @Provides
+    @Singleton
+    fun provideBackupRepository(
+        taskDao: TaskDao,
+        quickNoteDao: QuickNoteDao,
+        quickNoteRepository: QuickNoteRepository,
+        settingsRepository: SettingsRepository
+    ): BackupRepository = BackupRepository(taskDao, quickNoteDao, quickNoteRepository, settingsRepository)
 }

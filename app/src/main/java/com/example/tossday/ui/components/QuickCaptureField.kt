@@ -42,27 +42,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
+import androidx.compose.ui.unit.sp
+import com.example.tossday.data.repository.NoteBackground
 import kotlinx.coroutines.delay
 
 @Composable
 fun QuickCaptureField(
     text: String,
     onTextChange: (String) -> Unit,
+    noteBackground: NoteBackground = NoteBackground.NONE,
     isHapticEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
 
-    var initialCursorSet by remember { mutableStateOf(false) }
+    // rememberSaveable, щоб після навігації (наприклад в Налаштування й назад) ми НЕ
+    // ставили курсор знову в кінець. Раніше тут було просто remember — тому при поверненні
+    // initialCursorSet=false → курсор стрибав у кінець → внутрішній скрол поля з'їжджав
+    // на верх (або в інше місце), створюючи відчуття "перелистнуло всі нотатки".
+    var initialCursorSet by rememberSaveable { mutableStateOf(false) }
     var showCleanupDialog by remember { mutableStateOf(false) }
     var hasAutoFocused by rememberSaveable { mutableStateOf(false) }
 
@@ -71,12 +83,18 @@ fun QuickCaptureField(
     LaunchedEffect(text) {
         if (textFieldValue.text != text) {
             if (!initialCursorSet && text.isNotEmpty()) {
-                val displayText = if (!text.endsWith("\n")) "$text\n" else text
-                textFieldValue = TextFieldValue(displayText, TextRange(displayText.length))
+                // Перший запуск з уже збереженим текстом — курсор у кінці, без авто-додавання "\n".
+                textFieldValue = TextFieldValue(text, TextRange(text.length))
                 initialCursorSet = true
-                if (displayText != text) onTextChange(displayText)
             } else {
-                textFieldValue = textFieldValue.copy(text = text)
+                // Зовнішня заміна тексту (напр., очищення чернетки) — обмежуємо selection
+                // довжиною нового тексту, щоб поле не намагалося прокрутити в неіснуючу позицію.
+                val safeSelection = textFieldValue.selection.let { sel ->
+                    val end = sel.end.coerceAtMost(text.length)
+                    val start = sel.start.coerceAtMost(end)
+                    TextRange(start, end)
+                }
+                textFieldValue = textFieldValue.copy(text = text, selection = safeSelection)
             }
         }
     }
@@ -89,8 +107,60 @@ fun QuickCaptureField(
         }
     }
 
-    // ФІКС: Прибрано animateContentSize, щоб уникнути конфліктів з клавіатурою (IME)
-    Box(modifier = modifier.fillMaxWidth()) {
+    val gridColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
+    // Висота рядка береться з тієї самої bodyLarge типографіки, якою рендериться текст.
+    // Якщо хтось колись змінить шрифт у темі — лінії автоматично під нього підлаштуються.
+    val bodyLargeStyle = MaterialTheme.typography.bodyLarge
+    val density = LocalDensity.current
+    val lineSpacingPx = with(density) {
+        val lh = bodyLargeStyle.lineHeight
+        if (lh.isUnspecified) 24.sp.toPx() else lh.toPx()
+    }
+    // Material3 TextField без label має вертикальний padding 16.dp зверху — звідти
+    // починається перший рядок тексту. Перша лінія йде під першим рядком.
+    val topPaddingPx = with(density) { 16.dp.toPx() }
+
+    // Сітка/лінійка кешується в Path через drawWithCache: Path перебудовується лише
+    // коли змінюється розмір Box або noteBackground, інакше малюється один кешований
+    // Path за кадр (без N drawLine викликів). Це усуває джанк скролу при тривалому тексті.
+    val stroke = remember { Stroke(width = 1f) }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawWithCache {
+                val path = Path()
+                when (noteBackground) {
+                    NoteBackground.NONE -> Unit
+                    NoteBackground.LINES -> {
+                        var y = topPaddingPx + lineSpacingPx
+                        while (y < size.height) {
+                            path.moveTo(0f, y)
+                            path.lineTo(size.width, y)
+                            y += lineSpacingPx
+                        }
+                    }
+                    NoteBackground.GRID -> {
+                        var y = topPaddingPx + lineSpacingPx
+                        while (y < size.height) {
+                            path.moveTo(0f, y)
+                            path.lineTo(size.width, y)
+                            y += lineSpacingPx
+                        }
+                        var x = lineSpacingPx
+                        while (x < size.width) {
+                            path.moveTo(x, 0f)
+                            path.lineTo(x, size.height)
+                            x += lineSpacingPx
+                        }
+                    }
+                }
+                onDrawBehind {
+                    if (noteBackground != NoteBackground.NONE) {
+                        drawPath(path = path, color = gridColor, style = stroke)
+                    }
+                }
+            }
+    ) {
         TextField(
             value = textFieldValue,
             onValueChange = { newValue ->

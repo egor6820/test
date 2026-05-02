@@ -37,6 +37,12 @@ class TaskRepository @Inject constructor(
             taskDao.getAllFutureTasksWithTime().map { it.toDomain() }
         }
 
+    suspend fun getOldTasksWithAlarms(cutoffDate: LocalDate, keepDate: LocalDate?): List<Task> =
+        withContext(Dispatchers.Default) {
+            taskDao.getOldTasksWithAlarms(cutoffDate.toString(), keepDate?.toString())
+                .map { it.toDomain() }
+        }
+
     suspend fun save(task: Task) = withContext(Dispatchers.IO) {
         taskDao.upsert(task.toEntity())
     }
@@ -52,6 +58,11 @@ class TaskRepository @Inject constructor(
     suspend fun deleteOldTasks(cutoffDate: LocalDate) = withContext(Dispatchers.IO) {
         taskDao.deleteOldTasks(cutoffDate.toString())
     }
+
+    suspend fun deleteOldTasksKeeping(cutoffDate: LocalDate, keepDate: LocalDate?) =
+        withContext(Dispatchers.IO) {
+            taskDao.deleteOldTasksKeeping(cutoffDate.toString(), keepDate?.toString())
+        }
 
     suspend fun deleteForDate(date: LocalDate) = withContext(Dispatchers.IO) {
         taskDao.deleteByDate(date.toString())

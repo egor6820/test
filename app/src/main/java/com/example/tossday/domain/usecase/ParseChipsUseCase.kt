@@ -15,10 +15,11 @@ class ParseChipsUseCase @Inject constructor() {
         val seen = mutableSetOf<String>()
         var cursor = 0
 
-        for (rawLine in text.split("\n")) {
+        val lines = text.split("\n")
+        lines.forEachIndexed { lineIndex, rawLine ->
             val lineStart = cursor
             cursor += rawLine.length + 1
-            if (rawLine.trim().startsWith("//")) continue
+            if (rawLine.trim().startsWith("//")) return@forEachIndexed
 
             val stripped = bulletPattern.replace(rawLine, "").trim()
             val segments = if (stripped.length > 100) {
@@ -36,15 +37,17 @@ class ParseChipsUseCase @Inject constructor() {
                 if (text.isEmpty()) return@forEachIndexed
                 if (!seen.add(text.lowercase())) return@forEachIndexed
 
+                // Стабільний id: будується з позиції рядка в тексті (lineIndex), а не з
+                // байтового зсуву (lineStart). Дописування символів у поточний рядок або
+                // редагування інших рядків (без додавання/видалення \n) не змінює lineIndex,
+                // тож LazyRow бачить той самий чип і не програє enter-анімацію наново.
                 chips.add(
                     Chip(
                         text = text,
                         durationMinutes = duration,
                         sourceStart = lineStart,
                         sourceEnd = lineStart + rawLine.length,
-                        // Стабільний id поки користувач дописує символи в той самий рядок:
-                        // lineStart лишається тим самим, поки попередні рядки не змінили довжину.
-                        id = lineStart.toLong() * 1000L + segIdx
+                        id = (lineIndex.toLong() shl 16) or (segIdx.toLong() and 0xFFFFL)
                     )
                 )
             }

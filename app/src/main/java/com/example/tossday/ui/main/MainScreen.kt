@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.tossday.data.repository.NoteBackground
 import com.example.tossday.domain.model.DayLoad
 import com.example.tossday.domain.model.Task
 import com.example.tossday.ui.components.ChipsRow
@@ -79,6 +81,7 @@ fun MainScreen(
                 quickNoteText = uiState.quickNoteText,
                 onNoteChanged = viewModel::onQuickNoteChanged,
                 isHapticEnabled = uiState.isHapticEnabled,
+                noteBackground = uiState.noteBackground,
                 onSettingsClick = onSettingsClick
             )
 
@@ -96,8 +99,10 @@ fun MainScreen(
                 dayLoads = uiState.dayLoads,
                 selectedDate = uiState.selectedDate,
                 hoveredDate = uiState.dragState.hoveredDate,
+                pinnedDate = uiState.pinnedDate,
                 isHapticEnabled = uiState.isHapticEnabled,
-                onDaySelected = viewModel::onDaySelected
+                onDaySelected = viewModel::onDaySelected,
+                onDayLongPress = viewModel::togglePinnedDate
             )
 
             val dateHeaderText = remember(uiState.selectedDate) {
@@ -143,6 +148,7 @@ private fun TopBarSection(
     quickNoteText: String,
     onNoteChanged: (String) -> Unit,
     isHapticEnabled: Boolean,
+    noteBackground: NoteBackground,
     onSettingsClick: () -> Unit
 ) {
     Box(
@@ -153,6 +159,7 @@ private fun TopBarSection(
         QuickCaptureField(
             text = quickNoteText,
             onTextChange = onNoteChanged,
+            noteBackground = noteBackground,
             isHapticEnabled = isHapticEnabled,
             modifier = Modifier.heightIn(max = 250.dp)
         )
@@ -181,32 +188,73 @@ private fun DaysRowSection(
     dayLoads: List<DayLoad>,
     selectedDate: LocalDate,
     hoveredDate: LocalDate?,
+    pinnedDate: LocalDate?,
     isHapticEnabled: Boolean,
-    onDaySelected: (LocalDate) -> Unit
+    onDaySelected: (LocalDate) -> Unit,
+    onDayLongPress: (LocalDate) -> Unit
 ) {
     // Встановлюємо початковий скрол одразу при створенні стейту
     val rowState = rememberLazyListState(initialFirstVisibleItemIndex = 7)
+
+    // Якщо закріплений день — поза стандартним вікном, він іде в кінці списку у ViewModel.
+    // Тоді ставимо тонкий розділювач перед ним, щоб візуально відокремити "запіннений хвіст".
+    val pinnedTailIndex = remember(dayLoads, pinnedDate) {
+        if (pinnedDate == null) -1
+        else {
+            val last = dayLoads.lastOrNull()
+            if (last != null && last.date == pinnedDate) {
+                val today = LocalDate.now()
+                val isOutside = pinnedDate.isBefore(today.minusDays(7)) ||
+                        pinnedDate.isAfter(today.plusDays(30))
+                if (isOutside) dayLoads.lastIndex else -1
+            } else -1
+        }
+    }
 
     LazyRow(
         state = rowState,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(
+        itemsIndexed(
             items = dayLoads,
-            key = { it.date.toEpochDay() },
-            contentType = { "dayTile" }
-        ) { dayLoad ->
+            key = { _, dl -> dl.date.toEpochDay() },
+            contentType = { _, _ -> "dayTile" }
+        ) { index, dayLoad ->
             val isSelected = dayLoad.date == selectedDate
             val isHovered = dayLoad.date == hoveredDate
+            val isPinned = pinnedDate != null && dayLoad.date == pinnedDate
 
-            DayTile(
-                dayLoad = dayLoad,
-                isSelected = isSelected,
-                isDragHovered = isHovered,
-                isHapticEnabled = isHapticEnabled,
-                onClick = { onDaySelected(dayLoad.date) }
-            )
+            if (index == pinnedTailIndex) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .width(1.dp)
+                            .height(56.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    )
+                    DayTile(
+                        dayLoad = dayLoad,
+                        isSelected = isSelected,
+                        isDragHovered = isHovered,
+                        isPinned = isPinned,
+                        isHapticEnabled = isHapticEnabled,
+                        onClick = { onDaySelected(dayLoad.date) },
+                        onLongClick = { onDayLongPress(dayLoad.date) }
+                    )
+                }
+            } else {
+                DayTile(
+                    dayLoad = dayLoad,
+                    isSelected = isSelected,
+                    isDragHovered = isHovered,
+                    isPinned = isPinned,
+                    isHapticEnabled = isHapticEnabled,
+                    onClick = { onDaySelected(dayLoad.date) },
+                    onLongClick = { onDayLongPress(dayLoad.date) }
+                )
+            }
         }
     }
 }

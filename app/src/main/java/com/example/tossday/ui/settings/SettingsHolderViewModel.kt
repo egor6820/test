@@ -1,6 +1,7 @@
 package com.example.tossday.ui.settings
 
 import androidx.lifecycle.ViewModel
+import com.example.tossday.data.repository.NoteBackground
 import com.example.tossday.data.repository.SettingsRepository
 import com.example.tossday.ui.theme.AppTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,8 +14,13 @@ class SettingsHolderViewModel @Inject constructor(
 ) : ViewModel() {
 
     val appTheme: StateFlow<AppTheme> = settingsRepository.appTheme
+    val noteBackground: StateFlow<NoteBackground> = settingsRepository.noteBackground
 
     fun setTheme(theme: AppTheme) {
         settingsRepository.setAppTheme(theme)
+    }
+
+    fun setNoteBackground(bg: NoteBackground) {
+        settingsRepository.setNoteBackground(bg)
     }
 }
